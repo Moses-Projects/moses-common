@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "serverless": "^3.32.2"
+  },
+  "name": "moses-common",
+  "devDependencies": {
+    "serverless-prune-plugin": "^2.0.2",
+    "serverless-python-requirements": "^6.0.0"
+  }
+}

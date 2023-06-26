@@ -1,0 +1,61 @@
+service: moses-common
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.10
+  memorySize: 1024
+  timeout: 6
+  stage: dev
+  region: us-west-2
+  vpc:
+    securityGroupIds:
+      - "sg-050ff079"
+    subnetIds:
+      - "subnet-780f7d30"
+      - "subnet-2e431148"
+
+custom:
+  prune:
+    automatic: true
+    number: 10
+  pythonRequirements:
+    slim: true
+    nodeploy:
+      - boto3
+      - botocore
+    useDownloadCache: true
+    useStaticCache: true
+    dockerizePip: non-linux
+
+package:
+  individually: true
+  patterns:
+    - "!__pycache__/**"
+    - "!build/**"
+    - "!node_modules/**"
+    - "!venv"
+
+layers:
+  Mosescommon:
+    path: "lib-layer"
+    name: moses-common-${sls:stage}
+    description: "Common library for Moses Projects."
+    compatibleRuntimes:
+      - python3.10
+    compatibleArchitectures:
+      - x86_64
+    retain: false
+
+resources:
+  Outputs:
+    LayerExport:
+        Value:
+          Ref: MosescommonLambdaLayer
+        Export:
+          Name: MosescommonLambdaLayer${sls:stage}
+
+plugins:
+  - serverless-prune-plugin
+  - serverless-python-requirements
+
