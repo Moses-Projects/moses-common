@@ -4,7 +4,6 @@ import os
 import random
 import re
 import requests
-import subprocess
 import urllib
 
 import moses_common.__init__ as common

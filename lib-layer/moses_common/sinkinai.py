@@ -23,12 +23,13 @@ class SinkinAI:
 	sinkinai = moses_common.sinkinai.SinkinAI()
 	sinkinai = moses_common.sinkinai.SinkinAI(
 		sinkinai_api_key = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+		save_directory = os.environ['HOME'] + '/Downloads',
 		model = 'Deliberate',
 		log_level = 5,
 		dry_run = False
 	)
 	"""
-	def __init__(self, sinkinai_api_key=None, model=None, log_level=5, dry_run=False):
+	def __init__(self, sinkinai_api_key=None, save_directory=None, model=None, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self._dry_run = dry_run
 		
@@ -37,6 +38,8 @@ class SinkinAI:
 		self.sinkinai_api_key = sinkinai_api_key or os.environ.get('SINKINAI_API_KEY')
 		if not self.sinkinai_api_key:
 			raise KeyError("A sinkin.ai API key is required from https://sinkin.ai/api. It can be passed as an arg or set as SINKINAI_API_KEY env var.")
+		
+		self.save_directory = save_directory
 	
 	@property
 	def log_level(self):
@@ -56,6 +59,15 @@ class SinkinAI:
 			if not re.match(r'[a-z0-9]{32}', value):
 				raise ValueError("Invalid API key format")
 			self._sinkinai_api_key = value
+	
+	@property
+	def save_directory(self):
+		return self._save_directory
+	
+	@save_directory.setter
+	def save_directory(self, value=None):
+		if type(value) is str and os.path.isdir(value):
+			self._save_directory = value
 	
 	@property
 	def name(self):
@@ -82,7 +94,7 @@ class SinkinAI:
 						png_info.add_text(subkey, str(subvalue))
 					else:
 						png_info.add_text(key + '-' + subkey, str(subvalue))
-			else:
+			elif key not in ['filename', 'filepath']:
 				png_info.add_text(key, str(value))
 		return png_info
 	
@@ -92,7 +104,7 @@ class SinkinAI:
 		prompt,
 		negative_prompt=string,
 		model=string,
-		filename=path,
+		filename=name,
 		seed=int,
 		steps=int,
 		cfg_scale=float,
@@ -165,6 +177,9 @@ class SinkinAI:
 		
 			# Filename
 			if not data['filename']:
+				if not self.save_directory:
+					raise ValueError("A filepath or save directory is required.")
+				
 				qfilename_prefix = ''
 				if filename_prefix:
 					qfilename_prefix = filename_prefix + '-'
@@ -186,6 +201,7 @@ class SinkinAI:
 				
 				ts = str(common.get_epoch(now))
 				data['filename'] = '{}{}-sinkin-{}{}.png'.format(qfilename_prefix, ts, data['seed'], qfilename_suffix)
+				data['filepath'] = '{}/{}'.format(self.save_directory, data['filename'])
 			
 			if return_args:
 				return data
@@ -226,9 +242,15 @@ class SinkinAI:
 		# Get the image URL from the response
 		if 'images' not in response_data or type(response_data['images']) is not list or not len(response_data['images']):
 			return False, "No images received from sinkin.ai"
-		data['source_image_url'] = response_data['images'][0]
+		source_image_url = response_data['images'][0]
 		
 		if self.log_level >= 7:
-			print(f"Image URL: {data['source_image_url']}")
+			print(f"Image URL: {source_image_url}")
+		
+		common.download_url(source_image_url, data['filepath'])
+		
+		# Add metadata
+		img = Image.open(data['filepath'])
+		img.save(data['filepath'], pnginfo=self.get_png_info(data))
 		
 		return True, data

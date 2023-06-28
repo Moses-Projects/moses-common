@@ -279,7 +279,7 @@ class Table:
 		except ClientError as e:
 			if self.log_level >= 7:
 				print("error:", e)
-# 			raise ConnectionError("Failed to get item from DynamodDB " + self.table_name)
+# 			raise ConnectionError("Failed to get item from DynamodDB " + self.name)
 			pass
 		else:
 			if self.log_level >= 7:
@@ -312,7 +312,7 @@ class Table:
 		except ClientError as e:
 			if self.log_level >= 7:
 				print("error:", e)
-# 			raise ConnectionError("Failed to get item from DynamodDB " + self.table_name)
+# 			raise ConnectionError("Failed to get item from DynamodDB " + self.name)
 			pass
 		else:
 			if self.log_level >= 7:
@@ -516,7 +516,7 @@ class Table:
 			)
 		except ClientError as e:
 			print("error:", e)
-			raise ConnectionError("Failed to scan DynamodDB", self.table_name)
+			raise ConnectionError("Failed to scan DynamodDB", self.name)
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
@@ -570,7 +570,7 @@ class Table:
 		except ClientError as e:
 			if self.log_level >= 7:
 				print("error:", e)
-			raise ConnectionError("Failed to update DynamodDB", self.table_name)
+			raise ConnectionError("Failed to update DynamodDB", self.name)
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
@@ -597,7 +597,7 @@ class Table:
 		except ClientError as e:
 			if self.log_level >= 7:
 				print("error:", e)
-			raise ConnectionError("Failed to scan DynamodDB", self.table_name)
+			raise ConnectionError("Failed to put item DynamodDB", self.name)
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
@@ -631,7 +631,7 @@ class Table:
 		except ClientError as e:
 			if self.log_level >= 7:
 				print("error:", e)
-			raise ConnectionError("Failed to delete item", self.table_name)
+			raise ConnectionError("Failed to delete item", self.name)
 		else:
 			if self.log_level >= 7:
 				print("response:", response)

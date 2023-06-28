@@ -75,7 +75,7 @@ class StabilityAI:
 						png_info.add_text(subkey, str(subvalue))
 					else:
 						png_info.add_text(key + '-' + subkey, str(subvalue))
-			else:
+			elif key not in ['filename', 'filepath']:
 				png_info.add_text(key, str(value))
 		return png_info
 
@@ -117,7 +117,7 @@ class StableDiffusion(StabilityAI):
 	stable_diffusion.text_to_image(
 		prompt,
 		negative_prompt=string,
-		filepath=path,
+		filename=filename,
 		seed=int,
 		steps=int,
 		cfg_scale=float,
@@ -127,7 +127,7 @@ class StableDiffusion(StabilityAI):
 	"""
 	def text_to_image(self,
 		prompt,
-		filepath=None,
+		filename=None,
 		negative_prompt=None,
 		seed=None,
 		steps=None,
@@ -145,7 +145,7 @@ class StableDiffusion(StabilityAI):
 				"engine_label": self.label,
 				"engine_name": self.name,
 				"prompt": prompt,
-				"filepath": filepath,
+				"filename": filename,
 				"seed": int(str(random.randrange(1000000000)).zfill(9)),
 				"steps": 30,
 				"cfg_scale": 7.0,
@@ -175,8 +175,8 @@ class StableDiffusion(StabilityAI):
 			if height:
 				data['height'] = common.convert_to_int(height)
 		
-			# Filepath
-			if not data['filepath']:
+			# Filename
+			if not data['filename']:
 				if not self.save_directory:
 					raise ValueError("A filepath or save directory is required.")
 				
@@ -200,7 +200,8 @@ class StableDiffusion(StabilityAI):
 					qfilename_suffix = '-' + filename_suffix
 				
 				ts = str(common.get_epoch())
-				data['filepath'] = '{}/{}{}-sd-{}{}.png'.format(self.save_directory, qfilename_prefix, ts, data['seed'], qfilename_suffix)
+				data['filename'] = '{}{}-sd-{}{}.png'.format(qfilename_prefix, ts, data['seed'], qfilename_suffix)
+				data['filepath'] = '{}/{}'.format(self.save_directory, data['filename'])
 		
 			if return_args:
 				return data

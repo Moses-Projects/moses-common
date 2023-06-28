@@ -52,16 +52,22 @@ class Object:
 		self._log_level = common.normalize_log_level(value)
 	
 	"""
-	response = file.upload(content)
+	response = file.upload_file(filepath)
 	"""
-	def upload(self, content):
+	def upload_file(self, filepath):
+		response = self._client.upload_file(
+			filepath,
+			self._bucket.name,
+			self._object_name
+		)
+	
+	"""
+	response = file.upload_content(content)
+	"""
+	def upload_content(self, content):
 		response = self._client.upload_fileobj(
 			io.BytesIO(content),
 			self._bucket.name,
 			self._object_name
 		)
-		print("response {}: {}".format(type(response), response))
-# 		if common.is_success(response) and 'Name' in response and type(response['Name']) is str:
-# 			return True
-# 		return False
 	

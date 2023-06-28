@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import re
+import requests
 import sys
 import urllib.request
 import urllib.parse
@@ -96,7 +97,16 @@ def get_url(url, args={}, debug=False, dry_run=False):
 		raise
 	else:
 		return 200, convert_value(response.decode('UTF-8'))
-	
+
+def download_url(url, filepath):
+	# Download and save the image to a file
+	data = requests.get(url).content
+	if not data:
+		return False
+	with open(filepath, "wb") as handler:
+		handler.write(data)
+	return True
+
 
 """
 token = common.get_oauth2_token(url, key, secret)

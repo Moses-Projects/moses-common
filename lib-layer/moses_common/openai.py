@@ -73,7 +73,7 @@ class OpenAI:
 						png_info.add_text(subkey, str(subvalue))
 					else:
 						png_info.add_text(key + '-' + subkey, str(subvalue))
-			else:
+			elif key not in ['filename', 'filepath']:
 				png_info.add_text(key, str(value))
 		return png_info
 
@@ -159,14 +159,14 @@ class DALLE(OpenAI):
 	"""
 	dalle.text_to_image(prompt)
 	dalle.text_to_image(prompt,
-		filepath=path,
+		filename=path,
 		width=512,
 		height=512
 	)
 	"""
 	def text_to_image(self,
 		prompt,
-		filepath=None,
+		filename=None,
 		width=None,
 		height=None,
 		filename_prefix=None,
@@ -180,7 +180,7 @@ class DALLE(OpenAI):
 				"engine_label": self.label,
 				"engine_name": self.name,
 				"prompt": prompt,
-				"filepath": filepath,
+				"filename": filename,
 				"width": 512,
 				"height": 512
 			}
@@ -191,10 +191,10 @@ class DALLE(OpenAI):
 			if height:
 				data['height'] = common.convert_to_int(height)
 		
-			# Filepath
-			if not data['filepath']:
+			# Filename
+			if not data['filename']:
 				if not self.save_directory:
-					raise ValueError("A filepath or save directory is required.")
+					raise ValueError("A save directory is required.")
 				
 				qfilename_prefix = ''
 				if filename_prefix:
@@ -207,7 +207,8 @@ class DALLE(OpenAI):
 					qfilename_suffix = '-' + filename_suffix
 				
 				ts = str(common.get_epoch())
-				data['filepath'] = '{}/{}{}-dalle{}.png'.format(self.save_directory, qfilename_prefix, ts, qfilename_suffix)
+				data['filename'] = '{}{}-dalle{}.png'.format(qfilename_prefix, ts, qfilename_suffix)
+				data['filepath'] = '{}/{}'.format(self.save_directory, data['filename'])
 		
 			if return_args:
 				return data
@@ -230,10 +231,16 @@ class DALLE(OpenAI):
 		# Get the image URL from the response
 		if not image_resp or 'data' not in image_resp:
 			return False, "Failed response from OpenAI"
-		data['source_image_url'] = image_resp["data"][0]["url"]
+		source_image_url = image_resp["data"][0]["url"]
 		
 		if self.log_level >= 7:
-			print(f"Image URL: {data['source_image_url']}")
+			print(f"Image URL: {source_image_url}")
+		
+		common.download_url(source_image_url, data['filepath'])
+		
+		# Add metadata
+		img = Image.open(data['filepath'])
+		img.save(data['filepath'], pnginfo=self.get_png_info(data))
 		
 		return True, data
 	
