@@ -424,9 +424,9 @@ class Prompt:
 	def data(self):
 		return self._data
 	
-	def generate(self):
+	def generate(self, openai_api_key=None):
 		if 'prompt' not in self._data:
-			gpt = moses_common.openai.GPT(log_level=self.log_level, dry_run=self._dry_run)
+			gpt = moses_common.openai.GPT(openai_api_key=openai_api_key, log_level=self.log_level, dry_run=self._dry_run)
 			self._data['prompt'] = gpt.chat(self._data['query']['query'])
 		
 		self._add_resolution()

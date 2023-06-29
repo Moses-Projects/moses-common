@@ -29,7 +29,7 @@ class SinkinAI:
 		dry_run = False
 	)
 	"""
-	def __init__(self, sinkinai_api_key=None, save_directory=None, model=None, log_level=5, dry_run=False):
+	def __init__(self, sinkinai_api_key=None, save_directory=None, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self._dry_run = dry_run
 		

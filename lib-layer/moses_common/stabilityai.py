@@ -27,7 +27,7 @@ class StabilityAI:
 		dry_run = False
 	)
 	"""
-	def __init__(self, stability_key=None, save_directory=None, log_level=5, dry_run=False):
+	def __init__(self, stability_key=None, save_directory=None, model=None, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self._dry_run = dry_run
 		
@@ -91,14 +91,20 @@ class StableDiffusion(StabilityAI):
 		dry_run = False
 	)
 	"""
-	def __init__(self, stability_key=None, save_directory=None, log_level=5, dry_run=False):
+	def __init__(self, stability_key=None, save_directory=None, model=None, log_level=5, dry_run=False):
 		super().__init__(stability_key=stability_key, save_directory=save_directory, log_level=log_level, dry_run=dry_run)
+		
+		engine = 'stable-diffusion-xl-beta-v2-2-2'
+		self._name = 'sdxl'
+		if model == '1.5':
+			engine = 'stable-diffusion-v1-5'
+			self._name = 'sd15'
 		self._stability_api = client.StabilityInference(
 			key = self.stability_key,
 				# API Key reference.
 			verbose = True,
 				# Print debug messages.
-			engine = "stable-diffusion-xl-beta-v2-2-2"
+			engine = engine
 				# Set the engine to use for generation.
 				# Available engines: stable-diffusion-v1 stable-diffusion-v1-5 stable-diffusion-512-v2-0 stable-diffusion-768-v2-0
 				# stable-diffusion-512-v2-1 stable-diffusion-768-v2-1 stable-diffusion-xl-beta-v2-2-2 stable-inpainting-v1-0 stable-inpainting-512-v2-0
@@ -106,10 +112,12 @@ class StableDiffusion(StabilityAI):
 	
 	@property
 	def name(self):
-		return "sdxl"
+		return self._name
 	
 	@property
 	def label(self):
+		if self._name == 'sd15':
+			return "Stable Diffusion 1.5"
 		return "Stable Diffusion XL"
 	
 	"""

@@ -33,6 +33,7 @@ class OpenAI:
 		self.openai_api_key = openai_api_key or os.environ.get('OPENAI_API_KEY')
 		if not self.openai_api_key:
 			raise KeyError("An OpenAI API key is required from https://platform.openai.com/account. It can be passed as an arg or set as OPENAI_API_KEY env var.")
+		openai.api_key = self.openai_api_key
 		
 		self.save_directory = save_directory
 	
