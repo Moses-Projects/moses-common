@@ -67,16 +67,11 @@ class OpenAI:
 
 	def get_png_info(self, data):
 		png_info = PngInfo()
-		for key, value in data.items():
-			if type(value) is dict:
-				for subkey, subvalue in value.items():
-					if subkey == key:
-						png_info.add_text(subkey, str(subvalue))
-					else:
-						png_info.add_text(key + '-' + subkey, str(subvalue))
-			elif key not in ['filename', 'filepath']:
-				png_info.add_text(key, str(value))
+		flat_data = common.flatten_hash(data)
+		for key, value in flat_data.items():
+			png_info.add_text(key, str(value))
 		return png_info
+	
 
 
 class GPT(OpenAI):

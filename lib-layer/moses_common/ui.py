@@ -60,6 +60,11 @@ class Interface:
 			"label": "JSON file",
 			"type": "file",
 			"required": True
+		}, {
+			"name": "files",
+			"label": "Image files",
+			"type": "glob",
+			"required": True
 		} ],
 		"options": [ {
 			"short": "v",
@@ -150,6 +155,13 @@ class Interface:
 						if not os.path.isfile(value):
 							self.error("File '{}' not found".format(value))
 							sys.exit(2)
+					elif 'type' in param and param['type'] == 'glob':
+						if not os.path.isfile(value):
+							self.error("File '{}' not found".format(value))
+							sys.exit(2)
+						value = [value]
+						for i in range(len(args)):
+							value.append(args.pop(0))
 					self._args[param['name']] = value
 				else:
 					self._args[param['name']] = None
@@ -428,5 +440,10 @@ class Interface:
 			return
 		self.info(self._usage_message)
 	
-	
-
+	def pretty(self, hash):
+		text = common.make_json(hash, pretty_print=True)
+		text = re.sub(r'(".*?"):', lambda m: self.format_text(m.group(1), 'blue') + ':', str(text))
+		text = re.sub(r': (".*?")', lambda m: ': ' + self.format_text(m.group(1), 'red'), str(text))
+		text = re.sub(r': ([0-9.-]+)', lambda m: ': ' + self.format_text(m.group(1), 'maroon'), str(text))
+		text = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(text))
+		print(text)

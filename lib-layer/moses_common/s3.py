@@ -52,6 +52,43 @@ class Object:
 		self._log_level = common.normalize_log_level(value)
 	
 	"""
+	response = file.get_file(filepath=None)
+	"""
+	def get_file(self, filepath):
+		response = self._client.get_object(
+			Bucket = self._bucket.name,
+			Key = self._object_name
+		)
+		if type(response) is dict and 'Body' in response:
+			if filepath:
+				common.write_file(filepath, response['Body'])
+				return True
+			else:
+				return response['Body']
+		return None
+	
+	"""
+	url = file.get_presigned_url(expiration_time=3600)
+	"""
+	def get_presigned_url(self, expiration_time=3600):
+		try:
+			# Generate a presigned URL for the S3 object
+			presigned_url = self._client.generate_presigned_url(
+				'get_object',
+				Params={
+					'Bucket': self._bucket.name,
+					'Key': self._object_name
+				},
+				ExpiresIn=expiration_time
+			)
+			
+			return presigned_url
+		
+		except Exception as e:
+			print(f"Error generating presigned URL: {e}")
+			return None
+	
+	"""
 	response = file.upload_file(filepath)
 	"""
 	def upload_file(self, filepath):

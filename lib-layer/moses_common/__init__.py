@@ -170,8 +170,11 @@ def parse_json(json_string):
 	if not re.match(r'(\{|\[)', json_string):
 		return None
 	try:
+		# Remove invalid single quote escapes
+		json_string = re.sub(r'(?<!\\)\\([^u"])', r'\1', json_string)
 		json_object = json.loads(json_string)
 	except ValueError as e:
+		print(e)
 		return None
 	return json_object
 
@@ -256,7 +259,7 @@ value_object = common.convert_value(value_string)
 def convert_value(input_string):
 	if type(input_string) is not str:
 		return input_string
-	
+# 	print("input_string {}: {}".format(type(input_string), input_string))
 	value_string = parse_base64(input_string)
 	if value_string is None:
 		value_string = input_string
@@ -652,6 +655,30 @@ def conjunction(orig_words, conj='and'):
 		return ', '.join(words[:len(words)-1]) + ',' + conj + words[-1]
 
 
+## Hash handling
+"""
+Collapses inner dicts by combining keys with hyphens. A key with the same name as the enclosing dict is named for the enclosing dict.
+flat_hash = common.flatten_hash(full_hash)
+"""
+def flatten_hash(input, upper_key=None, inner_key=None):
+	if type(input) is not dict:
+		return None
+	output = {}
+	for key, value in input.items():
+		new_key = key
+		if inner_key == key:
+			new_key = upper_key
+		elif upper_key:
+			new_key = upper_key + '-' + key
+		
+		if type(value) is dict:
+			sub_hash = flatten_hash(value, new_key, key)
+			for subkey, subvalue in sub_hash.items():
+				output[subkey] = subvalue
+		else:
+			output[new_key] = value
+	return output
+
 ## List handling
 def to_list(input, key):
 	output = []
@@ -801,7 +828,6 @@ def convert_string_to_time(input):
 			continue
 	return None
 
-
 """
 boolean = common.is_int(input)
 * Accepts strings and floats that can be converted to integers
@@ -881,7 +907,6 @@ def convert_to_bool(input):
 		if not input or input == 'false' or input == 'no' or input == 'off':
 			return False
 	return None
-
 
 """
 boolean = common.is_uuid(input)
@@ -1046,6 +1071,14 @@ def normalize_log_level(value):
 	return 0
 
 
+# Serverless functions
+def is_local():
+	if 'LAMBDA_TASK_ROOT' not in os.environ or ('IS_LOCAL' in os.environ and os.environ['IS_LOCAL'] == 'true'):
+		if 'USER' in os.environ and os.environ['USER'] != 'ubuntu':
+			return True
+	return False
+
+
 # AWS functions
 
 """
@@ -1111,7 +1144,6 @@ def convert_dict_to_list(input_dict, case='upper'):
 		
 	return output_list
 
-
 """
 output_dict = common.convert_list_to_dict(input_list)
 """
@@ -1144,7 +1176,6 @@ def convert_list_to_dict(input_list):
 		
 	return output_dict
 	
-	
 """
 unquoted_list = common.unquote_list(quoted_list)
 """
@@ -1156,7 +1187,6 @@ def unquote_list(quoted_list):
 		elif re.match(r'^"', item):
 			unquoted = re.sub(r'(^"|"$)', '', item)
 	return unquoted
-	
 
 """
 args = common.cast_args(args, specs)
@@ -1205,7 +1235,6 @@ def cast_args(input={}, specs={}, should_fill=False):
 					raise AttributeError("Arg '{}' is type '{}' but must be type dict.".format(key, type(input[key])))
 				args[key] = input[key]
 	return args
-	
 
 """
 boolean = common.is_success(response)

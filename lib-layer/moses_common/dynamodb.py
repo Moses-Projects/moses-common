@@ -65,10 +65,11 @@ class Table:
 	}
 	'''
 	def load(self):
+		print("load()")
 		response = boto3_client.describe_table(
 			TableName = self.name
 		)
-# 		print("response {}: {}".format(type(response), response))
+		print("response {}: {}".format(type(response), response))
 		if moses_common.is_success(response) and 'Table' in response and type(response['Table']) is dict:
 			self._info = response['Table']
 			if 'AttributeDefinitions' in response['Table'] and type(response['Table']['AttributeDefinitions']) is list:
@@ -506,6 +507,41 @@ class Table:
 				
 	
 	"""
+	records, total = table.get_keys()
+	"""
+	def get_keys(self):
+		response = {}
+		try:
+			if self.sort_key:
+				response = boto3_client.scan(
+					TableName = self._name,
+					ProjectionExpression = "#p, #s",
+					ExpressionAttributeNames = {
+						"#p": self.partition_key.name,
+						"#s": self.sort_key.name
+					}
+				)
+			else:
+				response = boto3_client.scan(
+					TableName = self._name,
+					ProjectionExpression = "#p",
+					ExpressionAttributeNames = {
+						"#p": self.partition_key.name
+					}
+				)
+		except ClientError as e:
+			print("error:", e)
+			raise ConnectionError("Failed to scan DynamodDB", self.name)
+		else:
+			if self.log_level >= 7:
+				print("response:", response)
+			if moses_common.is_success(response) and 'Items' in response:
+				count = None
+				if 'ItemCount' in self._info:
+					count = self._info['ItemCount']
+				return self.convert_from_item(response['Items']), count
+	
+	"""
 	records, total = table.scan()
 	"""
 	def scan(self):
@@ -525,6 +561,7 @@ class Table:
 				if 'ItemCount' in self._info:
 					count = self._info['ItemCount']
 				return self.convert_from_item(response['Items']), count
+	
 	
 	"""
 	table.update_item(item)

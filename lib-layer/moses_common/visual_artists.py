@@ -17,21 +17,21 @@ import moses_common.visual_artists as visual_artists
 
 class Collective:
 	"""
-	collective = visual_artists.Collective()
-	collective = visual_artists.Collective(log_level=log_level, dry_run=dry_run)
+	collective = visual_artists.Collective(artist_list_location)
+	collective = visual_artists.Collective(artist_list_location, log_level=log_level, dry_run=dry_run)
 	collective = visual_artists.Collective(
+		artist_list_location,
 		log_level = 5,
 		dry_run = False
 	)
 	"""
-	def __init__(self, log_level=5, dry_run=False):
+	def __init__(self, artist_list_location, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self._dry_run = dry_run
 		self._ui = moses_common.ui.Interface()
 		
-		self._artist_list_url = 'https://supagruen.github.io/StableDiffusion-CheatSheet/src/data.js'
-		self._artist_list_filename = os.path.dirname(__file__) + '/visual_artists.json'
-		
+		self._artist_list_filename = artist_list_location + '/.visual_artists.json'
+	
 	
 	@property
 	def log_level(self):
@@ -41,21 +41,34 @@ class Collective:
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
 	
+	@property
+	def artist_list_url(self):
+		return 'https://supagruen.github.io/StableDiffusion-CheatSheet/src/data.js'
+	
+	@property
+	def artist_list_filename(self):
+		return self._artist_list_filename
+	
+	def has_artist_list(self):
+		if os.path.isfile(self.artist_list_filename):
+			return True
+		return False
+	
 	def retrieve_artist_list(self):
 		self._ui.body("Retrieving artist list...")
-		response_code, response_data = common.get_url(self._artist_list_url, dry_run=self._dry_run)
+		response_code, response_data = common.get_url(self.artist_list_url, dry_run=self._dry_run)
 		response_data = re.sub(r'^.*?\[', '[', response_data)
 		response_data = re.sub(r';$', '', response_data)
 		
 		if self._dry_run:
-			self._ui.dry_run(f"Write to '{self._artist_list_filename}'")
+			self._ui.dry_run(f"Write to '{self.artist_list_filename}'")
 		else:
-			common.write_file(self._artist_list_filename, response_data)
+			common.write_file(self.artist_list_filename, response_data)
 	
 	def get_artist_list(self):
-		if not os.path.isfile(self._artist_list_filename):
+		if not os.path.isfile(self.artist_list_filename):
 			self.retrieve_artist_list()
-		return common.read_file(self._artist_list_filename)
+		return common.read_file(self.artist_list_filename)
 	
 	def get_artists(self):
 		artist_list = self.get_artist_list()
@@ -71,6 +84,10 @@ class Collective:
 		return artists
 	
 	def get_artist(self, artist_name):
+		if re.search(r',', artist_name):
+			parts = artist_name.split(',')
+			artist_name = parts[1] + ' ' + parts[0]
+			print("artist_name {}: {}".format(type(artist_name), artist_name))
 		artist_list = self.get_artists()
 		for artist in artist_list:
 			artist_match = re.compile(r'\b{}\b'.format(common.normalize(artist_name)))
@@ -276,7 +293,7 @@ class Artist:
 	
 	@property
 	def checkpoint(self):
-		return self._data.get('Category')
+		return self._data.get('Checkpoint')
 	
 	@property
 	def image_url(self):
@@ -322,7 +339,7 @@ class Artist:
 			"artist": self.name,
 			"model": self.checkpoint
 		}
-	
+		
 		# Art form and method
 		art_forms = self._collective.get_art_forms()
 		qart_form = ' of art'
@@ -333,7 +350,7 @@ class Artist:
 			qart_form = f" of a {art_form_name}"
 			if re.match(r'[aeiou]', art_form_name):
 				qart_form = f" of an {art_form_name}"
-		
+			
 			# Method
 			if 'methods' in art_forms[art_form]:
 				method = self.choose_category(art_forms[art_form]['methods'], self.categories)
@@ -342,10 +359,10 @@ class Artist:
 					qart_form = f" of a {query['method']} {art_form_name}"
 					if re.match(r'[aeiou]', query['method']):
 						qart_form = f" of an {query['method']} {art_form_name}"
-	
+		
 		# Artist
 		qartist = f" by {query['artist']}"
-	
+		
 		# Subject
 		qsubject = ''
 		subject = self.choose_category(list(subjects.keys()), self.categories)
@@ -355,24 +372,24 @@ class Artist:
 				qart_form = re.sub(r' of an?', ' of a botanical', qart_form)
 			else:
 				qsubject = f" of {subjects[subject]}"
-	
+		
 		# Style
 		qstyle = ''
 		style = self.choose_category(styles, self.categories)
 		if style:
 			query['style'] = style
 			qstyle = f" in the style of {query['style']}"
-	
+		
 		# Century
 		qcentury = ''
 		century = self.choose_category(centuries, self.categories)
 		if century:
 			query['century'] = century.lower()
 			qcentury = f" from the {query['century']}"
-	
+		
 		# Form query
-		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury}."
-	
+		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury} including a description of the subject and style."
+		
 		if self.log_level >= 6:
 			print("Query: {}".format(common.make_json(query, pretty_print=True)))
 		elif self.log_level >= 5:
@@ -460,26 +477,22 @@ class Prompt:
 		elif prompt and re.search(r'\b(portrait)\b', prompt, re.IGNORECASE):
 			orientation = 'portrait'
 	
-		width = 512
-		height = 512
-		adjusted = 512
+		width = 768
+		height = 768
 		if orientation == 'landscape':
-			adjusted = 896
+			width = 896
+			height = 512
 			if aspect == 'full':
-				adjusted = 640
+				width = 640
 			elif aspect == '35':
-				adjusted = 768
+				width = 768
 		elif orientation == 'portrait':
-			adjusted = 640
+			width = 512
+			height = 640
 			if aspect == '35':
-				adjusted = 768
+				height = 768
 			elif aspect == 'hd':
-				adjusted = 896
-	
-		if orientation == 'landscape':
-			width = adjusted
-		elif orientation == 'portrait':
-			height = adjusted
+				height = 896
 		
 		self._data['width'] = width
 		self._data['height'] = height
