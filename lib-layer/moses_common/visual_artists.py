@@ -87,7 +87,6 @@ class Collective:
 		if re.search(r',', artist_name):
 			parts = artist_name.split(',')
 			artist_name = parts[1] + ' ' + parts[0]
-			print("artist_name {}: {}".format(type(artist_name), artist_name))
 		artist_list = self.get_artists()
 		for artist in artist_list:
 			artist_match = re.compile(r'\b{}\b'.format(common.normalize(artist_name)))
