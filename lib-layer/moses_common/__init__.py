@@ -297,9 +297,29 @@ def yaml_load(yaml_string):
 	return yaml_dict
 
 
-def read_file(filepath, delimiter=None, mapping=None):
-	if not os.path.isfile(filepath):
-		return None
+## File handling
+
+"""
+age_in_days = common.get_file_age(filename)
+"""
+def get_file_age(filepath, file_checked=False):
+	if not file_checked:
+		filepath = os.path.expanduser(filepath)
+		if not os.path.isfile(filepath):
+			return None
+	epoch = get_epoch()
+	return (epoch - os.path.getmtime(filepath)) / 86400
+	
+"""
+data = common.read_file(filename)
+For CSVs:
+data = common.read_file(filename, delimiter=',', mapping=dict)
+"""
+def read_file(filepath, delimiter=None, mapping=None, file_checked=False):
+	if not file_checked:
+		filepath = os.path.expanduser(filepath)
+		if not os.path.isfile(filepath):
+			return None
 	if re.search(r'\.csv$', filepath, re.IGNORECASE):
 		return read_csv(filepath, delimiter=delimiter, mapping=mapping)
 	else:
@@ -311,7 +331,11 @@ def read_file(filepath, delimiter=None, mapping=None):
 			return map_csv(contents, mapping)
 		return contents
 
-def write_file(filepath, data, format=None, delimiter=None):
+"""
+success = common.write_file(filename, data)
+success = common.write_file(filename, data, format='json')
+"""
+def write_file(filepath, data, format=None, make_dir=False):
 	text = str(data)
 	if type(data) is list or type(data) is dict:
 		if format == 'json' or re.search(r'\.json$', filepath):
@@ -322,10 +346,25 @@ def write_file(filepath, data, format=None, delimiter=None):
 			text = '---\n' + make_yaml(data)
 		else:
 			return False
+	filepath = os.path.expanduser(filepath)
 	with open(filepath, "w") as file:
 		file.write(text)
 		return True
+
+"""
+data = common.read_cache(filename, days_to_expire)
+"""
+def read_cache(filepath, days):
+	filepath = os.path.expanduser(filepath)
+	if not os.path.isfile(filepath):
+		return None
+	age = get_file_age(filepath, file_checked=True)
+	print("age {}: {}".format(type(age), age))
+	if convert_to_float(days) < get_file_age(filepath, file_checked=True):
+		return None
 	
+	return read_file(filepath, file_checked=True)
+
 
 def _get_default_config_filename():
 	if 'HOME' in os.environ:
@@ -341,12 +380,12 @@ settings = common.read_config(filename)
 def read_config(filename=None):
 	if not filename:
 		filename = _get_default_config_filename()
+	filename = os.path.expanduser(filename)
 	
 	if not os.path.isfile(filename):
 		return {}
 	
-	settings = read_file(filename)
-	return settings
+	return read_file(filename, file_checked=True)
 
 """
 common.save_config(data)
@@ -355,6 +394,7 @@ common.save_config(data, filename)
 def save_config(data, filename=None):
 	if not filename:
 		filename = _get_default_config_filename()
+	filename = os.path.expanduser(filename)
 	
 	# Read previous settings
 	settings = read_config(filename=filename)
@@ -373,11 +413,10 @@ records = common.read_csv(filepath)
 records = common.read_csv(filepath, delimiter='|')
 """
 def read_csv(filepath, delimiter=',', mapping=None):
+	filepath = os.path.expanduser(filepath)
 	if not os.path.isfile(filepath):
 		return None
 	records = []
-	if re.match(r'~', filepath):
-		filepath = re.sub(r'~', os.environ.get('HOME'), filepath)
 	with open(filepath) as csv_file:
 		csv_read = csv.reader(csv_file, delimiter=delimiter)
 		
@@ -511,12 +550,14 @@ def _map_csv_record(record, mapping):
 success = common.write_csv(filepath, array_of_dicts, fields=array_of_fields_to_include):
 """
 def write_csv(filepath, data, fields=None):
+	filepath = os.path.expanduser(filepath)
 	with open(filepath, 'w', newline='') as csvfile:
 		writer = csv.DictWriter(csvfile, fieldnames=fields, extrasaction='ignore')
 		writer.writeheader()
 		for row in data:
 			writer.writerow(row)
 	return True
+
 
 ## CG environment variables
 
@@ -828,6 +869,7 @@ def convert_string_to_time(input):
 			continue
 	return None
 
+
 """
 boolean = common.is_int(input)
 * Accepts strings and floats that can be converted to integers
@@ -908,6 +950,7 @@ def convert_to_bool(input):
 			return False
 	return None
 
+
 """
 boolean = common.is_uuid(input)
 """
@@ -918,6 +961,7 @@ def is_uuid(input):
 
 
 ## Date/time formatting
+
 """
 date_string = common.get_date_string(string_or_datetime)
 """
@@ -1048,6 +1092,7 @@ def check_input(field_map, body):
 		
 
 ## Logging
+
 def normalize_log_level(value):
 	if is_int(value) and value >= 0 and value <= 7:
 		return convert_to_int(value)
@@ -1144,6 +1189,7 @@ def convert_dict_to_list(input_dict, case='upper'):
 		
 	return output_list
 
+
 """
 output_dict = common.convert_list_to_dict(input_list)
 """
@@ -1176,6 +1222,7 @@ def convert_list_to_dict(input_list):
 		
 	return output_dict
 	
+	
 """
 unquoted_list = common.unquote_list(quoted_list)
 """
@@ -1187,6 +1234,7 @@ def unquote_list(quoted_list):
 		elif re.match(r'^"', item):
 			unquoted = re.sub(r'(^"|"$)', '', item)
 	return unquoted
+	
 
 """
 args = common.cast_args(args, specs)
@@ -1235,6 +1283,7 @@ def cast_args(input={}, specs={}, should_fill=False):
 					raise AttributeError("Arg '{}' is type '{}' but must be type dict.".format(key, type(input[key])))
 				args[key] = input[key]
 	return args
+	
 
 """
 boolean = common.is_success(response)
