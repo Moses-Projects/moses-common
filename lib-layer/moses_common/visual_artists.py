@@ -224,7 +224,7 @@ class Collective:
 			"Marine":			{ "weight": 13,		"prompt": "a marine seascape" },
 			"Nudity":			{ "weight": 0,		"prompt": "nudity" },
 			"Ornithology":		{ "weight": 2,		"prompt": "ornithology" },
-			"Portrait":			{ "weight": 0,	"prompt": "a portrait" },
+			"Portrait":			{ "weight": 0,		"prompt": "a portrait" },
 			"Still Life":		{ "weight": 2,		"prompt": "a still life" }
 		}
 		# " in the style of {style}"

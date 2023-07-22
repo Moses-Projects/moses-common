@@ -584,7 +584,7 @@ dry_run, log_level, limit = common.set_basic_args(event)
 def set_basic_args(event):
 	dry_run = convert_to_bool(event.get('dry_run')) or False
 	log_level = convert_to_int(event.get('log_level')) or 5
-	limit = convert_to_int(event['limit']) or None
+	limit = convert_to_int(event.get('limit')) or None
 	
 	if convert_to_bool(event.get('verbose')):
 		log_level = 6
