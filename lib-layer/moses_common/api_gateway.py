@@ -99,6 +99,8 @@ class Request:
 			return self._event['httpMethod'].upper()
 		elif 'requestContext' in self._event and 'httpMethod' in self._event['requestContext']:
 			return self._event['requestContext']['httpMethod'].upper()
+		elif 'requestContext' in self._event and 'http' in self._event['requestContext'] and 'method' in self._event['requestContext']['http']:
+			return self._event['requestContext']['http']['method'].upper()
 		elif 'method' in self._event:
 			return self._event['method'].upper()
 		return None
@@ -152,9 +154,19 @@ class Request:
 		return None
 	
 	@property
+	def host(self):
+		if 'headers' in self._event and 'host' in self._event['headers']:
+			return self._event['headers']['host']
+		elif 'requestContext' in self._event and 'domainName' in self._event['requestContext']:
+			return self._event['requestContext']['domainName']
+		return None
+		
+	@property
 	def path(self):
 		if 'path' in self._event:
 			return self._event['path']
+		elif 'rawPath' in self._event:
+			return self._event['rawPath']
 		elif 'requestContext' in self._event and 'path' in self._event['requestContext'] and 'stage' in self._event['requestContext']:
 			stage = self._event['requestContext']['stage']
 			path_match = r'/{}'.format(stage)

@@ -65,11 +65,9 @@ class Table:
 	}
 	'''
 	def load(self):
-		print("load()")
 		response = boto3_client.describe_table(
 			TableName = self.name
 		)
-		print("response {}: {}".format(type(response), response))
 		if moses_common.is_success(response) and 'Table' in response and type(response['Table']) is dict:
 			self._info = response['Table']
 			if 'AttributeDefinitions' in response['Table'] and type(response['Table']['AttributeDefinitions']) is list:
@@ -507,45 +505,75 @@ class Table:
 				
 	
 	"""
-	records, total = table.get_keys()
+	records = table.get_keys()
+	records = table.get_keys(['extra_fields'])
 	"""
-	def get_keys(self):
+	def get_keys(self, included_fields=None):
 		response = {}
+		items = []
 		try:
+			projection_expression = "#p"
+			expression_attribute_names = {
+				"#p": self.partition_key.name
+			}
 			if self.sort_key:
-				response = boto3_client.scan(
-					TableName = self._name,
-					ProjectionExpression = "#p, #s",
-					ExpressionAttributeNames = {
-						"#p": self.partition_key.name,
-						"#s": self.sort_key.name
-					}
-				)
-			else:
-				response = boto3_client.scan(
-					TableName = self._name,
-					ProjectionExpression = "#p",
-					ExpressionAttributeNames = {
-						"#p": self.partition_key.name
-					}
-				)
+				projection_expression = "#p, #s"
+				expression_attribute_names = {
+					"#p": self.partition_key.name,
+					"#s": self.sort_key.name
+				}
+			if included_fields:
+				cnt = 0
+				for field in included_fields:
+					key = f"#f{cnt}"
+					projection_expression += f", {key}"
+					expression_attribute_names[key] = field
+					cnt += 1
+			
+			response = boto3_client.scan(
+				TableName = self._name,
+				ProjectionExpression = projection_expression,
+				ExpressionAttributeNames = expression_attribute_names
+			)
 		except ClientError as e:
 			print("error:", e)
 			raise ConnectionError("Failed to scan DynamodDB", self.name)
-		else:
-			if self.log_level >= 7:
-				print("response:", response)
-			if moses_common.is_success(response) and 'Items' in response:
-				count = None
-				if 'ItemCount' in self._info:
-					count = self._info['ItemCount']
-				return self.convert_from_item(response['Items']), count
+		
+		if self.log_level >= 7:
+			print("response:", response)
+		if not moses_common.is_success(response) or 'Items' not in response:
+			return None
+		
+		items = response['Items']
+		while 'LastEvaluatedKey' in response:
+			response = boto3_client.scan(
+				TableName = self._name,
+				ProjectionExpression = projection_expression,
+				ExpressionAttributeNames = expression_attribute_names,
+				ExclusiveStartKey=response['LastEvaluatedKey']
+			)
+			items.extend(response['Items'])
+		final_items = self.convert_from_item(items)
+		if self.sort_key:
+			final_items = sorted(final_items, key=lambda x: x[self.sort_key.name])
+		return final_items
 	
 	"""
-	records, total = table.scan()
+	list_of_keys = table.get_keys_as_list()
+	"""
+	def get_keys_as_list(self):
+		full_key_list = self.get_keys()
+		key_list = []
+		for key_set in full_key_list:
+			key_list.append(key_set[self.partition_key.name])
+		return key_list
+	
+	"""
+	records = table.scan()
 	"""
 	def scan(self):
 		response = {}
+		items = []
 		try:
 			response = boto3_client.scan(
 				TableName = self._name
@@ -553,14 +581,22 @@ class Table:
 		except ClientError as e:
 			print("error:", e)
 			raise ConnectionError("Failed to scan DynamodDB", self.name)
-		else:
-			if self.log_level >= 7:
-				print("response:", response)
-			if moses_common.is_success(response) and 'Items' in response:
-				count = None
-				if 'ItemCount' in self._info:
-					count = self._info['ItemCount']
-				return self.convert_from_item(response['Items']), count
+		
+		if self.log_level >= 7:
+			print("response:", response)
+		if not moses_common.is_success(response) or 'Items' not in response:
+			return None
+		
+		items = response['Items']
+		while 'LastEvaluatedKey' in response:
+			response = boto3_client.scan(
+				TableName = self._name,
+				ProjectionExpression = projection_expression,
+				ExpressionAttributeNames = expression_attribute_names,
+				ExclusiveStartKey=response['LastEvaluatedKey']
+			)
+			items.extend(response['Items'])
+		return self.convert_from_item(items)
 	
 	
 	"""

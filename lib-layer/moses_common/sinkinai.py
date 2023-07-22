@@ -4,7 +4,6 @@ import os
 import random
 import re
 import requests
-import subprocess
 import urllib
 
 from PIL import Image
@@ -226,12 +225,21 @@ class SinkinAI:
 			return True, data
 		
 		query = urllib.parse.urlencode(args)
-		cmd = ["curl", "-s", "-X", "POST", "-H", "Content-Type:multipart/form-data", f"{self.endpoint}?{query}"]
-		response = subprocess.check_output(cmd)
-		response_data = common.convert_value(response.decode('UTF-8'))
 		
-		if 'error_code' in response_data and response_data['error_code'] != 0:
-			return False, response_data['message']
+		response = requests.post(f"{self.endpoint}?{query}")
+		
+		if response.status_code == 200:
+			response_data = response.json()
+		else:
+			return False, response.status_code
+		
+		if 'error_code' not in response_data:
+			return False, "Error from sinkin.ai"
+		
+		if response_data['error_code'] != 0:
+			if 'message' in response_data:
+				return False, response_data['message']
+			return False, "Error from sinkin.ai"
 		
 		# Get the image URL from the response
 		if 'images' not in response_data or type(response_data['images']) is not list or not len(response_data['images']):

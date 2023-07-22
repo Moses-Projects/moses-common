@@ -8,6 +8,7 @@ import os
 import re
 import requests
 import sys
+import unidecode
 import urllib.request
 import urllib.parse
 import xmltodict
@@ -583,18 +584,18 @@ def get_env_abbr():
 """
 normalized_text = common.normalize(text)
 """
-def normalize(text):
+def normalize(text, strip_single_chars=True):
 	if type(text) is not str:
 		return text
 	input = text.lower()
-	input = input.encode('ascii', 'ignore').decode('ascii')
+	input = unidecode.unidecode(input)
 	input = re.sub(r'[^a-z0-9\.\s_-]', '', input)
 	input = re.sub(r'[\s\._-]+', ' ', input)
 	input = re.sub(r'(?:^ +| +$)', '', input)
 	words = input.split(r' ')
 	new_words = []
 	for word in words:
-		if len(word) <= 1:
+		if strip_single_chars and len(word) <= 1:
 			continue
 		new_words.append(word)
 	return ' '.join(new_words)
@@ -962,6 +963,15 @@ def is_uuid(input):
 
 ## Date/time formatting
 
+def get_datetime_from_string(input):
+	if is_datetime(input):
+		return input
+	if type(input) is str:
+		dt = datetime.datetime.fromisoformat(input)
+		if dt:
+			return dt
+	return None
+
 """
 date_string = common.get_date_string(string_or_datetime)
 """
@@ -982,8 +992,14 @@ def get_dt_past(days=0):
 	tz = datetime.timezone(datetime.timedelta(hours=0))
 	return datetime.datetime.now(tz) - datetime.timedelta(days=days)
 
+def get_dt_from_epoch(input):
+	epoch = convert_to_int(input)
+	return datetime.datetime.fromtimestamp(epoch)
+
 def get_epoch(dt=None):
-	if not dt:
+	if dt:
+		dt = get_datetime_from_string(dt)
+	else:	
 		dt = get_dt_now()
 	return int(dt.timestamp())
 
