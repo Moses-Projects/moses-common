@@ -108,7 +108,6 @@ def download_url(url, filepath):
 		handler.write(data)
 	return True
 
-
 """
 token = common.get_oauth2_token(url, key, secret)
 """
@@ -366,7 +365,6 @@ def read_cache(filepath, days):
 	
 	return read_file(filepath, file_checked=True)
 
-
 def _get_default_config_filename():
 	if 'HOME' in os.environ:
 		filename = re.sub(r'\.\w+$', '', os.path.basename(sys.modules['__main__'].__file__))
@@ -407,7 +405,6 @@ def save_config(data, filename=None):
 	# Save settings
 	write_file(filename, settings, format='yaml')
 	return filename
-
 
 """
 records = common.read_csv(filepath)
@@ -595,6 +592,7 @@ def set_basic_args(event):
 		log_level = 7
 	
 	return dry_run, log_level, limit
+
 
 ## Text handling
 
@@ -1189,6 +1187,7 @@ def normalize_log_level(value):
 
 
 # Serverless functions
+
 def is_local():
 	if 'LAMBDA_TASK_ROOT' not in os.environ or ('IS_LOCAL' in os.environ and os.environ['IS_LOCAL'] == 'true'):
 		if 'USER' in os.environ and os.environ['USER'] != 'ubuntu':
