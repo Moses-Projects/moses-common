@@ -532,6 +532,9 @@ def _map_csv_record(record, mapping):
 			elif value:
 				new_record[key] = True
 		elif field_type == 'datetime':
+			if 'time_field_name' in definition and definition['time_field_name'] in record and record[definition['time_field_name']]:
+				time_str = convert_string_to_time(record[definition['time_field_name']])
+				value = str(value) + ' ' + str(time_str)
 			value = convert_string_to_datetime(value)
 			if value is not None:
 				new_record[key] = value
@@ -560,7 +563,7 @@ def write_csv(filepath, data, fields=None):
 	return True
 
 
-## CG environment variables
+## Environment variables
 
 """
 environment = common.get_environment()
@@ -578,6 +581,20 @@ def get_env_abbr():
 		return 'prod'
 	return 'dev'
 
+"""
+dry_run, log_level, limit = common.set_basic_args(event)
+"""
+def set_basic_args(event):
+	dry_run = convert_to_bool(event.get('dry_run')) or False
+	log_level = convert_to_int(event.get('log_level')) or 5
+	limit = convert_to_int(event['limit']) or None
+	
+	if convert_to_bool(event.get('verbose')):
+		log_level = 6
+	if convert_to_bool(event.get('extra_verbose')):
+		log_level = 7
+	
+	return dry_run, log_level, limit
 
 ## Text handling
 
@@ -698,6 +715,7 @@ def conjunction(orig_words, conj='and'):
 
 
 ## Hash handling
+
 """
 Collapses inner dicts by combining keys with hyphens. A key with the same name as the enclosing dict is named for the enclosing dict.
 flat_hash = common.flatten_hash(full_hash)
@@ -721,7 +739,9 @@ def flatten_hash(input, upper_key=None, inner_key=None):
 			output[new_key] = value
 	return output
 
+
 ## List handling
+
 def to_list(input, key):
 	output = []
 	if type(input) is list:
@@ -854,11 +874,29 @@ def convert_string_to_date(input):
 			continue
 	return None
 
+def convert_float_to_time(input):
+	text = str(input)
+	hour = convert_to_int(input)
+	minutes = 0
+	if re.search(r'\.', text):
+		parts = text.split(r'.')
+		hour = convert_to_int(parts[0])
+		minutes = int(round(int(parts[1]) * 0.6, 0))
+	input = f"{hour:02d}:{minutes:02d}:00"
+	try:
+		datetime_obj = datetime.datetime.strptime(input, '%H:%M:%S')
+		return datetime_obj.time()
+	except ValueError:
+		return None
+	return None
+
 def convert_string_to_time(input):
 	if is_datetime(input):
 		return input.time()
 	if is_time(input):
 		return input
+	if type(input) is float or re.match(r'\d\d?\.\d+$', input):
+		return convert_float_to_time(input)
 	input = str(input)
 	input = input.strip()
 	input = re.sub(r'^(\d{1,2}:\d\d(:\d\d)?( (am|pm))?).*?$', r'\1', input.lower())
@@ -869,7 +907,6 @@ def convert_string_to_time(input):
 		except ValueError:
 			continue
 	return None
-
 
 """
 boolean = common.is_int(input)
@@ -905,6 +942,19 @@ def convert_to_int(input):
 		if re.match(r'-?\d+(\.0*)?', input):
 			return int(re.sub(r'\..*$', '', input))
 	return None
+
+"""
+boolean = common.is_float(input)
+* Accepts strings and integers that can be converted to floats
+"""
+def is_float(input):
+	if type(input) is float:
+		return True
+	if type(input) is int:
+		return True
+	if type(input) is str and re.match(r'-?\d+(\.\d*)?', input):
+		return True
+	return False
 
 """
 float = common.convert_to_float(input)
@@ -951,7 +1001,6 @@ def convert_to_bool(input):
 			return False
 	return None
 
-
 """
 boolean = common.is_uuid(input)
 """
@@ -985,8 +1034,13 @@ def get_date_string(input):
 	year = input.strftime("%Y")
 	return f"{month} {day}, {year}"
 
-def get_dt_now():
-	return datetime.datetime.utcnow()
+def get_dt_now(format=None):
+	if format == 'date':
+		return datetime.date.today()
+	now = datetime.datetime.utcnow()
+	if format == 'time':
+		return now.time()
+	return now
 
 def get_dt_past(days=0):
 	tz = datetime.timezone(datetime.timedelta(hours=0))
@@ -1042,6 +1096,8 @@ def check_input(field_map, body):
 			max_length = field[4]
 		elif ftype == 'int':
 			max_length = 2147483647
+		if ftype == 'bool':
+			ftype = 'boolean'
 		
 		if key not in body:
 			if (type(required) is list or required):
@@ -1205,7 +1261,6 @@ def convert_dict_to_list(input_dict, case='upper'):
 		
 	return output_list
 
-
 """
 output_dict = common.convert_list_to_dict(input_list)
 """
@@ -1236,9 +1291,8 @@ def convert_list_to_dict(input_list):
 		
 		output_dict[key] = value
 		
-	return output_dict
-	
-	
+	return output_dict	
+
 """
 unquoted_list = common.unquote_list(quoted_list)
 """
@@ -1250,7 +1304,6 @@ def unquote_list(quoted_list):
 		elif re.match(r'^"', item):
 			unquoted = re.sub(r'(^"|"$)', '', item)
 	return unquoted
-	
 
 """
 args = common.cast_args(args, specs)
@@ -1299,7 +1352,6 @@ def cast_args(input={}, specs={}, should_fill=False):
 					raise AttributeError("Arg '{}' is type '{}' but must be type dict.".format(key, type(input[key])))
 				args[key] = input[key]
 	return args
-	
 
 """
 boolean = common.is_success(response)
@@ -1309,4 +1361,4 @@ def is_success(response):
 		if response['ResponseMetadata'].get('HTTPStatusCode') == 200 or response['ResponseMetadata'].get('HTTPStatusCode') == 204:
 			return True
 	return False
-	
+

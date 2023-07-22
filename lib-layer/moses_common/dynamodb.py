@@ -6,7 +6,7 @@ import re
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
-import moses_common.__init__
+import moses_common.__init__ as common
 import moses_common.ui
 
 boto3_client = boto3.client('dynamodb', region_name="us-west-2")
@@ -68,7 +68,7 @@ class Table:
 		response = boto3_client.describe_table(
 			TableName = self.name
 		)
-		if moses_common.is_success(response) and 'Table' in response and type(response['Table']) is dict:
+		if common.is_success(response) and 'Table' in response and type(response['Table']) is dict:
 			self._info = response['Table']
 			if 'AttributeDefinitions' in response['Table'] and type(response['Table']['AttributeDefinitions']) is list:
 				self._attributes = {}
@@ -99,7 +99,7 @@ class Table:
 	
 	@log_level.setter
 	def log_level(self, value):
-		self._log_level = moses_common.normalize_log_level(value)
+		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def exists(self):
@@ -283,7 +283,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response) and 'Item' in response:
+			if common.is_success(response) and 'Item' in response:
 				return self.convert_from_item(response['Item'])
 	
 	"""
@@ -316,7 +316,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response) and 'Items' in response:
+			if common.is_success(response) and 'Items' in response:
 				records = self.convert_from_item(response['Items'])
 				if len(records) and records[0] and self._sort_key.name in records[0]:
 					return records[0][self._sort_key.name]
@@ -417,7 +417,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response) and 'Count' in response:
+			if common.is_success(response) and 'Count' in response:
 				return response['Count']
 				
 	"""
@@ -481,7 +481,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response) and 'Items' in response:
+			if common.is_success(response) and 'Items' in response:
 				records = self.convert_from_item(response['Items'])
 				
 				# Get count
@@ -541,7 +541,7 @@ class Table:
 		
 		if self.log_level >= 7:
 			print("response:", response)
-		if not moses_common.is_success(response) or 'Items' not in response:
+		if not common.is_success(response) or 'Items' not in response:
 			return None
 		
 		items = response['Items']
@@ -584,7 +584,7 @@ class Table:
 		
 		if self.log_level >= 7:
 			print("response:", response)
-		if not moses_common.is_success(response) or 'Items' not in response:
+		if not common.is_success(response) or 'Items' not in response:
 			return None
 		
 		items = response['Items']
@@ -647,7 +647,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response):
+			if common.is_success(response):
 				return True
 		return False
 	
@@ -674,7 +674,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response):
+			if common.is_success(response):
 				return True
 		return False
 
@@ -708,7 +708,7 @@ class Table:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response):
+			if common.is_success(response):
 				return True
 		return False
 
@@ -777,7 +777,7 @@ class Index:
 	
 	@log_level.setter
 	def log_level(self, value):
-		self._log_level = moses_common.normalize_log_level(value)
+		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def exists(self):
@@ -849,7 +849,7 @@ class Index:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response) and 'Count' in response:
+			if common.is_success(response) and 'Count' in response:
 				return response['Count']
 				
 	"""
@@ -903,7 +903,7 @@ class Index:
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
-			if moses_common.is_success(response) and 'Items' in response:
+			if common.is_success(response) and 'Items' in response:
 				records = self._table.convert_from_item(response['Items'])
 				
 				# Get count
@@ -958,7 +958,7 @@ class Attribute:
 	
 	@log_level.setter
 	def log_level(self, value):
-		self._log_level = moses_common.normalize_log_level(value)
+		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def exists(self):
