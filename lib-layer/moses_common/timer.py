@@ -35,7 +35,7 @@ class TimerSet:
 		cdepth = len(inspect.stack()) - self._base_depth
 		if depth:
 			cdepth = depth
-		timer = moses_common.timer.Timer(label, cdepth)
+		timer = Timer(label, cdepth)
 		self._timer_list.append(timer)
 		return timer.start_time
 		
@@ -64,7 +64,7 @@ class TimerSet:
 		for timer in self._timer_list:
 			output.append(timer.as_string(args))
 		return "\n".join(output)
-
+	
 
 class Timer:
 	"""
@@ -77,6 +77,19 @@ class Timer:
 		self._depth = len(inspect.stack())
 		if depth:
 			self._depth = depth
+	
+	def __repr__(self):
+		if self._depth:
+			return f"Timer('{self.label}', {self._depth})"
+		return f"Timer('{self.label}')"
+	
+	"""
+	print(timer)
+	"""
+	def __str__(self):
+		if self.duration:
+			return 'Timer: {}s {}'.format(str(round(self.duration, 2)), self.label)
+		return f"Timer: running {self.label}"
 	
 	@property
 	def label(self):
@@ -96,6 +109,9 @@ class Timer:
 			return self._end_time - self._start_time
 		return None
 	
+	"""
+	timer.stop()
+	"""
 	def stop(self):
 		self._end_time = time.time()
 		return self.duration
@@ -111,7 +127,7 @@ class Timer:
 			dur_string = str(round(self.duration, 2)) + 's'
 		
 # 		dur_string = dur_string.rjust(7, ' ')
-		return "{}{}: {}".format(indent, dur_string, self._label)
+		return "{}{}: {}".format(indent, dur_string, self.label)
 
 
 class Refresh:

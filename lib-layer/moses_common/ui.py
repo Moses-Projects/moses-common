@@ -19,9 +19,11 @@ class Interface:
 	"""
 	ui = moses_common.ui.Interface()
 	"""
-	def __init__(self, use_slack_format=False, usage_message=None):
+	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None):
 		
 		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
+		
+		self.force_whitespace = common.convert_to_bool(force_whitespace) or False
 		
 		self._usage_message = usage_message
 		
@@ -38,6 +40,11 @@ class Interface:
 	@property
 	def is_person(self):
 		if self.supports_color or os.environ.get('SSH_AUTH_SOCK'):
+			return True
+	
+	@property
+	def is_aws_lambda(self):
+		if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
 			return True
 	
 	
@@ -365,12 +372,18 @@ class Interface:
 		indent = self.format_text(' ', color_name)
 		return indent + ' '
 	
+	def process_whitespace(self, text):
+		if self.is_aws_lambda and self.force_whitespace:
+			return re.sub(r'  ', '. ', text)
+		return text
+	
 	def bold(self, text=None):
 		if not text or not len(str(text)):
 			return ''
 		return self.format_text(text, 'bold')
 	
 	def body(self, text=None):
+		text = self.process_whitespace(text)
 		text = self.convert_slack_to_ansi(text)
 		if not len(text):
 			return
@@ -438,10 +451,20 @@ class Interface:
 			return
 		self.info(self._usage_message)
 	
-	def pretty(self, hash):
-		text = common.make_json(hash, pretty_print=True)
-		text = re.sub(r'(".*?"):', lambda m: self.format_text(m.group(1), 'blue') + ':', str(text))
-		text = re.sub(r': (".*?")', lambda m: ': ' + self.format_text(m.group(1), 'red'), str(text))
-		text = re.sub(r': ([0-9.-]+)', lambda m: ': ' + self.format_text(m.group(1), 'maroon'), str(text))
-		text = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(text))
-		print(text)
+	def pretty(self, input, label=None):
+		if label:
+			label = self.convert_slack_to_ansi(label)
+			if len(label):
+				print(label)
+		if self.is_person and (type(input) is dict or type(input) is list):
+			input = common.make_json(input, pretty_print=True)
+			if self.supports_color:
+				input = re.sub(r'(".*?"):', lambda m: self.format_text(m.group(1), 'blue') + ':', str(input))
+				input = re.sub(r': (".*?")', lambda m: ': ' + self.format_text(m.group(1), 'red'), str(input))
+				input = re.sub(r': ([0-9.-]+)', lambda m: ': ' + self.format_text(m.group(1), 'maroon'), str(input))
+				input = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(input))
+		print(input)
+
+
+
+

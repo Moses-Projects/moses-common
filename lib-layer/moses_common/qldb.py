@@ -10,7 +10,7 @@ from pyqldb.config.retry_config import RetryConfig
 from pyqldb.driver.qldb_driver import QldbDriver
 
 import moses_common.__init__ as common
-
+import moses_common.ui
 
 """
 import moses_common.qldb
@@ -43,7 +43,7 @@ class QLDB:
 	
 	def _connect_to_qldb(self):
 		if not self._qldb:
-			return self.qldb.QLDB(self._ledger_name)
+			return moses_common.qldb.QLDB(self._ledger_name)
 	
 	@property
 	def log_level(self):

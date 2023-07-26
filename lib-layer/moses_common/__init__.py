@@ -566,7 +566,7 @@ def write_csv(filepath, data, fields=None):
 environment = common.get_environment()
 """
 def get_environment():
-	if os.environ.get('ENVIRONMENT') in ['prod', 'production', 'main']:
+	if os.environ.get('ENVIRONMENT') in ['prod', 'production', 'main'] or os.environ.get('X-ENVIRONMENT') in ['prod', 'production', 'main']:
 		return 'production'
 	if re.search(r'-(prod|main)-', os.environ.get('AWS_LAMBDA_FUNCTION_NAME', '')):
 		return 'production'
@@ -1061,7 +1061,7 @@ def get_epoch(dt=None):
 def get_epoch_ms():
 	dt = get_dt_now()
 	return int(dt.timestamp() * 1000)
-	
+
 
 ## Input checking
 
