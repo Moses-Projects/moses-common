@@ -30,8 +30,8 @@ class Collective:
 	"""
 	def __init__(self, artist_list_location, log_level=5, dry_run=False):
 		self.log_level = log_level
-		self._dry_run = dry_run
-		self._ui = moses_common.ui.Interface()
+		self.dry_run = dry_run
+		self.ui = moses_common.ui.Interface()
 		artist_table.log_level = log_level
 		
 		self._artist_list_filename = artist_list_location + '/.visual_artists.json'
@@ -63,15 +63,15 @@ class Collective:
 		return False
 	
 	def retrieve_artist_list(self):
-		self._ui.body("Retrieving artist list...")
-		response_code, response_data = common.get_url(self.artist_list_url, dry_run=self._dry_run)
+		self.ui.body("Retrieving artist list...")
+		response_code, response_data = common.get_url(self.artist_list_url, dry_run=self.dry_run)
 		response_data = re.sub(r'^.*?\[', '[', response_data)
 		response_data = re.sub(r';$', '', response_data)
 		# Remove escaped single quotes; they are invalid in JSON
 		response_data = re.sub(r"\\'", "'", response_data)
 		
-		if self._dry_run:
-			self._ui.dry_run(f"Write to '{self.artist_list_filename}'")
+		if self.dry_run:
+			self.ui.dry_run(f"Write to '{self.artist_list_filename}'")
 		else:
 			common.write_file(self.artist_list_filename, response_data)
 	
@@ -89,11 +89,11 @@ class Collective:
 				self,
 				new_artist,
 				log_level = self.log_level,
-				dry_run = self._dry_run
+				dry_run = self.dry_run
 			)
 			if artist.id not in old_artists_ids:
 				if log_level >= 6:
-					self._ui.body(f"  Add artist {artist.name}")
+					self.ui.body(f"  Add artist {artist.name}")
 				new_artist['id'] = artist.id
 				artist_table.put_item(new_artist)
 				updated_cnt += 1
@@ -112,12 +112,14 @@ class Collective:
 				self,
 				artist_data,
 				log_level = self.log_level,
-				dry_run = self._dry_run
+				dry_run = self.dry_run
 			)
 			artists.append(artist)
 		return artists
 	
 	def get_artist(self, artist_name):
+		if not artist_name:
+			return None
 		if re.search(r',', artist_name):
 			parts = artist_name.split(',')
 			artist_name = parts[1] + ' ' + parts[0]
@@ -214,10 +216,13 @@ class Collective:
 		subjects = {
 			"Anatomy":			{ "weight": 2,		"prompt": "anatomy" },
 			"Architecture":		{ "weight": 3,		"prompt": "architecture" },
+			"Beach":			{ "weight": 1,		"prompt": "a beach" },
 			"Botanical":		{ "weight": 19,		"prompt": "botanical" },
+			"Canal":			{ "weight": 1,		"prompt": "a canal" },
 			"Cat":				{ "weight": 2,		"prompt": "cats" },
 			"Character Design":	{ "weight": 0,		"prompt": "a character design" },
 			"Cityscape":		{ "weight": 17,		"prompt": "a cityscape" },
+			"City Street":		{ "weight": 1,		"prompt": "a city street" },
 			"Dance":			{ "weight": 0,		"prompt": "dance" },
 			"Landscape":		{ "weight": 132,	"prompt": "a landscape" },
 			"Logo":				{ "weight": 0,		"prompt": "a logo" },
@@ -225,7 +230,9 @@ class Collective:
 			"Nudity":			{ "weight": 0,		"prompt": "nudity" },
 			"Ornithology":		{ "weight": 2,		"prompt": "ornithology" },
 			"Portrait":			{ "weight": 0,		"prompt": "a portrait" },
-			"Still Life":		{ "weight": 2,		"prompt": "a still life" }
+			"Railroad":			{ "weight": 1,		"prompt": "a train" },
+			"Still Life":		{ "weight": 2,		"prompt": "a still life" },
+			"Windmill":			{ "weight": 1,		"prompt": "a windmill" }
 		}
 		# " in the style of {style}"
 		styles = {
@@ -359,13 +366,17 @@ class Artist:
 		log_level = 5,
 		dry_run = False
 	)
+	
+	artist.id
+	artists.name
+	artists.categories
 	"""
 	def __init__(self, collective, data, log_level=5, dry_run=False):
 		self.log_level = log_level
-		self._dry_run = dry_run
-		self._collective = collective
-		self._data = data
-		self._id = common.convert_to_snakecase(common.normalize(self.name, strip_single_chars=False))
+		self.dry_run = dry_run
+		self.collective = collective
+		self.data = data
+		self.id = common.convert_to_snakecase(common.normalize(self.name, strip_single_chars=False))
 	
 	@property
 	def log_level(self):
@@ -376,47 +387,70 @@ class Artist:
 		self._log_level = common.normalize_log_level(value)
 	
 	@property
-	def id(self):
-		return self._id
-	
-	@property
 	def name(self):
-		if 'Prompt' in self._data:
-			artist_name = re.sub(r'style of ', '', self._data['Prompt'], re.IGNORECASE)
+		if 'Prompt' in self.data:
+			artist_name = re.sub(r'style of ', '', self.data['Prompt'], re.IGNORECASE)
 			artist_name = re.sub(r',.*$', '', artist_name)
 			artist_name = re.sub(r' *\(.*?\)', '', artist_name)
 			return artist_name
-		if 'Name' in self._data:
-			artist_name = re.sub(r' ?\(.*?\)', '', self._data['Name'], re.IGNORECASE)
+		if 'Name' in self.data:
+			artist_name = re.sub(r' ?\(.*?\)', '', self.data['Name'], re.IGNORECASE)
 			if re.search(r',', artist_name):
-				name_list = self._data['Name'].split(', ')
+				name_list = self.data['Name'].split(', ')
 				return name_list[1] + ' ' + name_list[0]
 			return artist_name
 		return None
 	
 	@property
+	def sort_name(self):
+		return self.data.get('Name')
+	
+	@property
 	def categories(self):
-		if 'Category' in self._data:
-			categories = self._data['Category'].split(', ')
+		if 'Category' in self.data:
+			categories = self.data['Category'].split(', ')
 			return categories
 		return []
 	
 	@property
+	def art_forms(self):
+		art_form_info = self.collective.get_art_forms()
+		art_forms = art_form_info.keys()
+		
+		artist_art_forms = []
+		for art_form_name, art_form_data in art_form_info.items():
+			if art_form_name in self.categories:
+				artist_art_forms.append(art_form_data)
+		return artist_art_forms
+	
+	@property
 	def checkpoint(self):
-		return self._data.get('Checkpoint')
+		return self.data.get('Checkpoint')
+	
+	@property
+	def model(self):
+		if self.data.get('preferred_model'):
+			return self.data.get('preferred_model')
+		return self.get_short_model_name(self.data.get('Checkpoint', 'sdxl'))
+	
+	@property
+	def full_model(self):
+		if self.data.get('preferred_model'):
+			return self.get_full_model_name(self.data.get('preferred_model'))
+		return self.get_full_model_name(self.data.get('Checkpoint', 'Stable Diffusion XL'))
 	
 	@property
 	def image_url(self):
-		if 'Image' in self._data:
-			return 'https://supagruen.github.io/StableDiffusion-CheatSheet/img/' + self._data['Image']
+		if 'Image' in self.data:
+			return 'https://supagruen.github.io/StableDiffusion-CheatSheet/img/' + self.data['Image']
 		return None
 	
 	def get_settings(self):
 		settings = {}
-		if 'Extrainfo' not in self._data:
+		if 'Extrainfo' not in self.data:
 			return None
 		
-		extra = self._data['Extrainfo']
+		extra = self.data['Extrainfo']
 		parts = re.search(r'(\d+) steps\b', extra, re.IGNORECASE)
 		if parts:
 			settings['steps'] = common.convert_to_int(parts.group(1))
@@ -442,17 +476,17 @@ class Artist:
 			return None
 	
 	def get_query(self, chosen_subject=None):
-		art_forms = self._collective.get_art_forms()
-		centuries, subjects, styles = self._collective.get_categories()	
+		art_forms = self.collective.get_art_forms()
+		centuries, subjects, styles = self.collective.get_categories()	
 		
 		# Assemble query
 		query = {
 			"artist": self.name,
-			"model": self.checkpoint
+			"model": self.model
 		}
 		
 		# Art form and method
-		art_forms = self._collective.get_art_forms()
+		art_forms = self.collective.get_art_forms()
 		qart_form = ' of art'
 		art_form = self.choose_category(list(art_forms.keys()), self.categories)
 		if art_form:
@@ -504,7 +538,8 @@ class Artist:
 			qcentury = f" from the {query['century']}"
 		
 		# Form query
-		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury} including a description of the subject and style."
+# 		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury} including a description of the subject and style."
+		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury}."
 		
 		if self.log_level >= 6:
 			print("Query: {}".format(common.make_json(query, pretty_print=True)))
@@ -514,6 +549,34 @@ class Artist:
 			print(f"Query: {query['query']}")
 	
 		return query
+	
+	def get_short_model_name(self, full_name=None):
+		if re.match(r'Stable Diffusion XL', full_name.re.IGNORECASE):
+			return 'sdxl'
+		elif re.match(r'Stable Diffusion 1.5', full_name.re.IGNORECASE):
+			return 'sd15'
+		elif re.match(r'Deliberate V2', full_name.re.IGNORECASE):
+			return 'del'
+		elif re.match(r'DreamShaper', full_name.re.IGNORECASE):
+			return 'ds'
+		elif re.match(r'Realistic Vision', full_name.re.IGNORECASE):
+			return 'rv'
+		else:
+			return None
+
+	def get_full_model_name(self, short_name=None):
+		if short_name == 'sdxl':
+			return "Stable Diffusion XL"
+		elif short_name == 'sd15':
+			return "Stable Diffusion 1.5"
+		elif short_name == 'del':
+			return "Deliberate V2"
+		elif short_name == 'ds':
+			return "DreamShaper"
+		elif short_name == 'rv':
+			return "Realistic Vision"
+		else:
+			return None
 
 
 
@@ -528,16 +591,13 @@ class Prompt:
 	"""
 	def __init__(self, query_or_prompt, log_level=5, dry_run=False):
 		self.log_level = log_level
-		self._dry_run = dry_run
+		self.dry_run = dry_run
+		self.data = {}
 		
 		if type(query_or_prompt) is str:
-			self._data = {
-				"prompt": query_or_prompt
-			}
+			self.data['prompt'] = query_or_prompt
 		elif type(query_or_prompt) is dict:
-			self._data = {
-				"query": query_or_prompt
-			}
+			self.data['query'] = query_or_prompt
 		else:
 			raise TypeError("Invalid query type")
 	
@@ -551,29 +611,31 @@ class Prompt:
 	
 	@property
 	def prompt(self):
-		return self._data.get('prompt')
+		return self.data.get('prompt')
 	
 	@property
-	def data(self):
-		return self._data
+	def model(self):
+		if 'query' in self.data:
+			return self.data['query'].get('model', 'del')
+		return 'del'
 	
 	def generate(self, openai_api_key=None):
-		if 'prompt' not in self._data:
-			gpt = moses_common.openai.GPT(openai_api_key=openai_api_key, log_level=self.log_level, dry_run=self._dry_run)
-			self._data['prompt'] = gpt.chat(self._data['query']['query'])
+		if 'prompt' not in self.data:
+			gpt = moses_common.openai.GPT(openai_api_key=openai_api_key, log_level=self.log_level, dry_run=self.dry_run)
+			self.data['prompt'] = gpt.chat(self.data['query']['query'])
 		
 		self._add_resolution()
 		self._improve_prompt()
 		
 		if self.log_level >= 6:
 			print(f"Prompt: {self.data}")
-		return self._data
+		return self.data
 	
 	def _add_resolution(self):
-		if 'prompt' not in self._data:
+		if 'prompt' not in self.data:
 			return False
 		
-		prompt = self._data['prompt']
+		prompt = self.data['prompt']
 		orientation = 'square'
 		aspect = 'square'
 		# Whole word portrait
@@ -610,35 +672,35 @@ class Prompt:
 			elif aspect == 'hd':
 				height = 896
 		
-		self._data['width'] = width
-		self._data['height'] = height
-		self._data['orientation'] = orientation
-		self._data['aspect'] = aspect
+		self.data['width'] = width
+		self.data['height'] = height
+		self.data['orientation'] = orientation
+		self.data['aspect'] = aspect
 		return True
 	
 	def _improve_prompt(self):
-		if 'prompt' not in self._data:
+		if 'prompt' not in self.data:
 			return False
 		
-		self._data['prompt'] = re.sub(r'^((\w+ ){1,5})on canvas\b', r'\1', self._data['prompt'], re.IGNORECASE)
-		self._data['prompt'] = re.sub(r'((\w+ ){0,5})canvas\b', r'\1painting', self._data['prompt'], re.IGNORECASE)
+		self.data['prompt'] = re.sub(r'^((\w+ ){1,5})on canvas\b', r'\1', self.data['prompt'], re.IGNORECASE)
+		self.data['prompt'] = re.sub(r'((\w+ ){0,5})canvas\b', r'\1painting', self.data['prompt'], re.IGNORECASE)
 	
-		if self._data and 'style' in self._data and self._data['style'] in ['Blizzard', 'Fantasy', 'Hearthstone', 'Mythology', 'Sc-iFi', 'Sci-Fi', 'Star Wars', 'Tolkein', 'Warhammer']:
-			self._data['prompt'] += ' Trending on artstation.'
-		elif re.search(r'\b(blizzard|fantasy|hearthstone|mythology|sci\-fi|star wars|tolkein|warhammer)\b', self._data['prompt'], re.IGNORECASE):
-			self._data['prompt'] += ' Trending on artstation.'
+		if self.data and 'style' in self.data and self.data['style'] in ['Blizzard', 'Fantasy', 'Hearthstone', 'Mythology', 'Sc-iFi', 'Sci-Fi', 'Star Wars', 'Tolkein', 'Warhammer']:
+			self.data['prompt'] += ' Trending on artstation.'
+		elif re.search(r'\b(blizzard|fantasy|hearthstone|sci\-fi|star wars|tolkein|warhammer)\b', self.data['prompt'], re.IGNORECASE):
+			self.data['prompt'] += ' Trending on artstation.'
 	
-	# 	self._data['prompt'] += " Very coherent, 4k, ultra realistic, ultrafine detailed."
+	# 	self.data['prompt'] += " Very coherent, 4k, ultra realistic, ultrafine detailed."
 		return True
 	
 	def get_negative_prompt(self, engine=None):
 		nps = []
 		if engine == 'sinkin':
 			nps.append('nude, nsfw')
-		if 'orientation' in self._data and self._data['orientation'] != 'square':
+		if 'orientation' in self.data and self.data['orientation'] != 'square':
 			nps.append('duplication artifact')
 		
-		prompt = self._data.get('prompt')
+		prompt = self.data.get('prompt')
 		if prompt and re.search(r'\b(portrait|person|people|child|children|baby|woman|lady|girl|man|boy)\b', prompt, re.IGNORECASE):
 			nps.append('((((ugly)))), (((duplicate))), ((morbid)), ((mutilated)), out of frame, extra fingers, mutated hands, ((poorly drawn hands)), ((poorly drawn face)), (((mutation))), (((deformed))), ((ugly)), blurry, ((bad anatomy)), (((bad proportions))), ((extra limbs)), cloned face, (((disfigured))), out of frame, ugly, extra limbs, (bad anatomy), gross proportions, (malformed limbs), ((missing arms)), ((missing legs)), (((extra arms))), (((extra legs))), mutated hands, (fused fingers), (too many fingers), (((long neck)))')
 		if prompt and re.search(r'\b(photo|photograph)\b', prompt, re.IGNORECASE):
@@ -649,4 +711,4 @@ class Prompt:
 			nps.append('frame, border, wall, hanging, border, canvas')
 		nps.append('deformed, disfigured, underexposed, overexposed, lowres, error, cropped, worst quality, low quality, jpeg artifacts, out of frame, watermark, signature')
 		return ', '.join(nps)
-
+	

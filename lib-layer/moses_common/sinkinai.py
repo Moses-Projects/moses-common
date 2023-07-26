@@ -138,13 +138,19 @@ class SinkinAI:
 				"width": 512,
 				"height": 512
 			}
+			model_abbr = 'del'
 			
 			# Model
 			if model:
-				if re.match(r'dreamshaper', model, re.IGNORECASE):
+				if model == 'ds' or re.match(r'dreamshaper', model, re.IGNORECASE):
 					data['model_id'] = "4zdwGOB"
 					data['model'] = "DreamShaper"
 					data['model_version'] = "5"
+					model_abbr = 'ds'
+				elif model == 'rv' or re.match(r'realistic', model, re.IGNORECASE):
+					data['model_id'] = "r2La2w2"
+					data['model'] = "Realistic Vision"
+					model_abbr = 'rv'
 			
 			# Negative prompt
 			if negative_prompt:
@@ -193,7 +199,7 @@ class SinkinAI:
 					qfilename_suffix = '-' + filename_suffix
 				
 				ts = str(common.get_epoch(now))
-				data['filename'] = '{}{}-sinkin-{}{}.png'.format(qfilename_prefix, ts, data['seed'], qfilename_suffix)
+				data['filename'] = '{}{}-sinkin_{}-{}{}.png'.format(qfilename_prefix, ts, model_abbr, data['seed'], qfilename_suffix)
 				data['filepath'] = '{}/{}'.format(self.save_directory, data['filename'])
 			
 			if return_args:

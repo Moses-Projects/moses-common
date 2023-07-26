@@ -1,10 +1,12 @@
 # print("Loaded S3 module")
 
-import moses_common.__init__ as common
 import base64
 import io
 import json
 from boto3 import client as boto3_client
+
+import moses_common.__init__ as common
+import moses_common.ui
 
 class Bucket:
 	"""
@@ -13,9 +15,10 @@ class Bucket:
 	"""
 	def __init__(self, bucket_name, log_level=5, dry_run=False):
 		self.log_level = log_level
-		self._dry_run = dry_run
-		self._client = boto3_client('s3', region_name="us-west-2")
-		self._bucket_name = bucket_name
+		self.dry_run = dry_run
+		self.client = boto3_client('s3', region_name="us-west-2")
+		self.bucket_name = bucket_name
+		self.ui = moses_common.ui.Interface(use_slack_format=True)
 	
 	@property
 	def log_level(self):
@@ -27,21 +30,22 @@ class Bucket:
 	
 	@property
 	def name(self):
-		return self._bucket_name
+		return self.bucket_name
 	
 	
 
 class Object:
 	"""
 	import moses_common.s3
-	file = moses_common.s3.Object(object_name)
+	file = moses_common.s3.Object(bucket, object_name)
 	"""
 	def __init__(self, bucket, object_name, log_level=5, dry_run=False):
 		self.log_level = log_level
-		self._dry_run = dry_run
-		self._bucket = bucket
-		self._client = self._bucket._client
-		self._object_name = object_name
+		self.dry_run = dry_run
+		self.bucket = bucket
+		self.client = self.bucket.client
+		self.object_name = object_name
+		self.ui = moses_common.ui.Interface(use_slack_format=True)
 	
 	@property
 	def log_level(self):
@@ -55,9 +59,12 @@ class Object:
 	response = file.get_file(filepath=None)
 	"""
 	def get_file(self, filepath):
-		response = self._client.get_object(
-			Bucket = self._bucket.name,
-			Key = self._object_name
+		if self.dry_run:
+			self.ui.dry_run(f"s3.get_object('{self.bucket.name}', '{self.object_name}')")
+			return True
+		response = self.client.get_object(
+			Bucket = self.bucket.name,
+			Key = self.object_name
 		)
 		if type(response) is dict and 'Body' in response:
 			if filepath:
@@ -73,11 +80,11 @@ class Object:
 	def get_presigned_url(self, expiration_time=3600):
 		try:
 			# Generate a presigned URL for the S3 object
-			presigned_url = self._client.generate_presigned_url(
+			presigned_url = self.client.generate_presigned_url(
 				'get_object',
 				Params={
-					'Bucket': self._bucket.name,
-					'Key': self._object_name
+					'Bucket': self.bucket.name,
+					'Key': self.object_name
 				},
 				ExpiresIn=expiration_time
 			)
@@ -92,19 +99,26 @@ class Object:
 	response = file.upload_file(filepath)
 	"""
 	def upload_file(self, filepath):
-		response = self._client.upload_file(
+		if self.dry_run:
+			self.ui.dry_run(f"s3.upload_file('{filepath}', '{self.bucket.name}', '{self.object_name}')")
+			return True
+		response = self.client.upload_file(
 			filepath,
-			self._bucket.name,
-			self._object_name
+			self.bucket.name,
+			self.object_name
 		)
+		return True
 	
 	"""
 	response = file.upload_content(content)
 	"""
 	def upload_content(self, content):
-		response = self._client.upload_fileobj(
+		if self.dry_run:
+			self.ui.dry_run(f"s3.upload_fileobj('{self.bucket.name}', '{self.object_name}')")
+			return True
+		response = self.client.upload_fileobj(
 			io.BytesIO(content),
-			self._bucket.name,
-			self._object_name
+			self.bucket.name,
+			self.object_name
 		)
 	

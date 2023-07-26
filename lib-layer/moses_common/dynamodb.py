@@ -24,7 +24,7 @@ class Table:
 	table = moses_common.dynamodb.Table(table_name)
 	"""
 	def __init__(self, table_name, log_level=5, dry_run=False):
-		self._dry_run = dry_run
+		self.dry_run = dry_run
 		self.log_level = log_level
 		
 		if not is_valid_name(table_name):
@@ -38,7 +38,7 @@ class Table:
 			self._exists = True
 		else:
 			self._exists = False
-		self._ui = moses_common.ui.Interface()
+		self.ui = moses_common.ui.Interface()
 		
 	'''
 	{
@@ -74,7 +74,7 @@ class Table:
 				self._attributes = {}
 				for attribute_info in response['Table']['AttributeDefinitions']:
 					if 'AttributeName' in attribute_info:
-						self._attributes[attribute_info['AttributeName']] = Attribute(self, attribute_info, log_level=self.log_level, dry_run=self._dry_run)
+						self._attributes[attribute_info['AttributeName']] = Attribute(self, attribute_info, log_level=self.log_level, dry_run=self.dry_run)
 				if 'KeySchema' in response['Table'] and type(response['Table']['KeySchema']) is list:
 					for i in range(len(response['Table']['KeySchema'])):
 						key_info = response['Table']['KeySchema'][i]
@@ -88,7 +88,7 @@ class Table:
 			if 'GlobalSecondaryIndexes' in response['Table'] and type(response['Table']['GlobalSecondaryIndexes']) is list:
 				self._indexes = {}
 				for index_info in response['Table']['GlobalSecondaryIndexes']:
-					index = Index(self, index_info, log_level=self.log_level, dry_run=self._dry_run)
+					index = Index(self, index_info, log_level=self.log_level, dry_run=self.dry_run)
 					self._indexes[index.name] = index
 			return True
 		return False
@@ -591,8 +591,6 @@ class Table:
 		while 'LastEvaluatedKey' in response:
 			response = boto3_client.scan(
 				TableName = self._name,
-				ProjectionExpression = projection_expression,
-				ExpressionAttributeNames = expression_attribute_names,
 				ExclusiveStartKey=response['LastEvaluatedKey']
 			)
 			items.extend(response['Items'])
@@ -629,8 +627,8 @@ class Table:
 			print("attribute_names {}: {}".format(type(attribute_names), attribute_names))
 			print("attribute_values {}: {}".format(type(attribute_values), attribute_values))
 		
-		if self._dry_run:
-			self._ui.dry_run("Update item: {}".format(item))
+		if self.dry_run:
+			self.ui.dry_run("Update item: {}".format(item))
 			return True
 		try:
 			response = boto3_client.update_item(
@@ -659,8 +657,8 @@ class Table:
 			return
 		new_item = self.convert_to_item(item)
 # 		print("new_item {}: {}".format(type(new_item), new_item))
-		if self._dry_run:
-			self._ui.dry_run("Put item: {}".format(item))
+		if self.dry_run:
+			self.ui.dry_run("Put item: {}".format(item))
 			return True
 		try:
 			response = boto3_client.put_item(
@@ -690,11 +688,11 @@ class Table:
 			key_hash[self.sort_key.name] = sort_key_value
 		
 		key_hash = self.convert_to_item(key_hash)
-		if self._dry_run:
+		if self.dry_run:
 			if sort_key_value:
-				self._ui.dry_run(f"Delete item {self.name}.{partition_key_value}.{sort_key_value}")
+				self.ui.dry_run(f"Delete item {self.name}.{partition_key_value}.{sort_key_value}")
 			else:
-				self._ui.dry_run(f"Delete item {self.name}.{partition_key_value}")
+				self.ui.dry_run(f"Delete item {self.name}.{partition_key_value}")
 			return True
 		try:
 			response = boto3_client.delete_item(
@@ -720,7 +718,7 @@ class Index:
 	index = moses_common.dynamodb.Index(table, args)
 	"""
 	def __init__(self, table, args, log_level=5, dry_run=False):
-		self._dry_run = dry_run
+		self.dry_run = dry_run
 		self.log_level = log_level
 		
 		if not args or type(args) is not dict:
@@ -736,7 +734,7 @@ class Index:
 			self._exists = True
 		else:
 			self._exists = False
-		self._ui = moses_common.ui.Interface()
+		self.ui = moses_common.ui.Interface()
 	
 	'''
 	{
@@ -933,7 +931,7 @@ class Attribute:
 	attribute = moses_common.dynamodb.Attribute(table, args)
 	"""
 	def __init__(self, table, args, log_level=5, dry_run=False):
-		self._dry_run = dry_run
+		self.dry_run = dry_run
 		self.log_level = log_level
 		
 		if not args or type(args) is not dict:
@@ -943,7 +941,7 @@ class Attribute:
 		self._name = args['AttributeName']
 		self._info = args
 		self._exists = True
-		self._ui = moses_common.ui.Interface()
+		self.ui = moses_common.ui.Interface()
 	
 	'''
 	{

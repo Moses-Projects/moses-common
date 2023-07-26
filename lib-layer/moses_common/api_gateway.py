@@ -23,6 +23,7 @@ import urllib.request
 import urllib.parse
 
 import moses_common.__init__ as common
+import moses_common.ui
 
 
 """
@@ -63,10 +64,19 @@ class Request:
 	def __init__(self, event={}, log_level=5, dry_run=False):
 		self._dry_run = dry_run
 		self.log_level = log_level
+		self.ui = moses_common.ui.Interface(use_slack_format=True)
 		
 		self._event = copy.deepcopy(event)
+		
 		if self.log_level >= 7:
-			print("event:", self._event)
+			self.ui.body(f"event: {self._event}")
+		elif self.log_level >= 6:
+			self.ui.body(f"path: *{self.path}*")
+			self.ui.body(f"method: *{self.method}*")
+			if self.method == 'GET':
+				self.ui.body(f"query: {self.query}")
+			else:
+				self.ui.body(f"body: {self.body}")
 	
 	@property
 	def log_level(self):

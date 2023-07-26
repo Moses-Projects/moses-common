@@ -1,6 +1,7 @@
 # print("Loaded Timer module")
 
 import inspect
+import datetime
 import time
 
 import moses_common.__init__ as common
@@ -63,7 +64,7 @@ class TimerSet:
 		for timer in self._timer_list:
 			output.append(timer.as_string(args))
 		return "\n".join(output)
-	
+
 
 class Timer:
 	"""
@@ -111,4 +112,23 @@ class Timer:
 		
 # 		dur_string = dur_string.rjust(7, ' ')
 		return "{}{}: {}".format(indent, dur_string, self._label)
+
+
+class Refresh:
+	"""
+	timer = moses_common.timer.Refresh()
+	"""
+	def __init__(self):
+		self.start_time = common.get_dt_now()
 	
+	"""
+	if timer.refresh(minutes=5):
+		# do stuff
+	"""
+	def refresh(self, minutes=5):
+		now = common.get_dt_now()
+		if now > self.start_time + datetime.timedelta(minutes=minutes):
+			self.start_time = now
+			return True
+		return False
+

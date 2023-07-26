@@ -21,9 +21,7 @@ class Interface:
 	"""
 	def __init__(self, use_slack_format=False, usage_message=None):
 		
-		self._use_slack_format = False
-		if use_slack_format:
-			self._use_slack_format = True
+		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
 		
 		self._usage_message = usage_message
 		
@@ -349,7 +347,7 @@ class Interface:
 	def convert_slack_to_ansi(self, text=None):
 		if not text or not len(str(text)):
 			return ''
-		if not self._use_slack_format:
+		if not self.use_slack_format:
 			return text
 		
 	# 	$text =~ s/(?:^|(?<=\s))\*(\S.*?)\*/\e[1m$1\e[21m/g;
