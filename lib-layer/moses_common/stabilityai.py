@@ -4,6 +4,7 @@ import io
 import os
 import random
 import re
+import requests
 
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
@@ -29,7 +30,7 @@ class StabilityAI:
 	"""
 	def __init__(self, stability_key=None, save_directory=None, model=None, log_level=5, dry_run=False):
 		self.log_level = log_level
-		self._dry_run = dry_run
+		self.dry_run = dry_run
 		
 		os.environ['STABILITY_HOST'] = 'grpc.stability.ai:443'
 		self.stability_key = stability_key or os.environ.get('STABILITY_KEY')
@@ -73,6 +74,18 @@ class StabilityAI:
 			png_info.add_text(key, str(value))
 		return png_info
 	
+	def get_engine_list(self):
+		url = "https://api.stability.ai/v1/engines/list".format(os.environ['STABILITY_HOST'])
+		print("url {}: {}".format(type(url), url))
+		response = requests.get(url, headers={
+			"Authorization": f"Bearer {self.stability_key}"
+		})
+		if response.status_code != 200:
+			return None
+		
+		payload = response.json()
+		return payload
+
 
 
 
@@ -94,6 +107,12 @@ class StableDiffusion(StabilityAI):
 		if model == 'sd15':
 			engine = 'stable-diffusion-v1-5'
 			self._name = 'sd15'
+		elif model == 'sdxl09':
+			engine = 'stable-diffusion-xl-1024-v0-9'
+			self._name = 'sdxl09'
+		elif model == 'sdxl10':
+			engine = 'stable-diffusion-xl-1024-v1-0'
+			self._name = 'sdxl10'
 		self._stability_api = client.StabilityInference(
 			key = self.stability_key,
 				# API Key reference.
@@ -113,7 +132,55 @@ class StableDiffusion(StabilityAI):
 	def label(self):
 		if self._name == 'sd15':
 			return "Stable Diffusion 1.5"
+		elif self._name == 'sdxl09':
+			return "Stable Diffusion XL 0.9"
+		elif self._name == 'sdxl10':
+			return "Stable Diffusion XL 1.0"
 		return "Stable Diffusion XL"
+	
+	def get_resolution(self, orientation='square', aspect='square'):
+		width = 512
+		height = 512
+		
+		if self.name in ['sd15', 'sdxl']:
+			width = 512
+			height = 512
+			if orientation == 'landscape':
+				width = 896
+				if aspect == 'full':
+					width = 640
+				elif aspect == '35':
+					width = 768
+			elif orientation == 'portrait':
+				height = 640
+				if aspect == '35':
+					height = 768
+				elif aspect == 'hd':
+					height = 896
+		
+		else:
+			width = 1024
+			height = 1024
+			if orientation == 'landscape':
+				width = 1344
+				height = 768
+				if aspect == 'full':
+					width = 1152
+					height = 896
+				elif aspect == '35':
+					width = 1216
+					height = 832
+			elif orientation == 'portrait':
+				width = 896
+				height = 1152
+				if aspect == '35':
+					width = 832
+					height = 1216
+				elif aspect == 'hd':
+					width = 768
+					height = 1344
+		
+		return orientation, aspect, width, height
 	
 	"""
 	stable_diffusion.text_to_image(prompt)
@@ -124,9 +191,21 @@ class StableDiffusion(StabilityAI):
 		seed=int,
 		steps=int,
 		cfg_scale=float,
-		width=512,
-		height=512
+		orientation='square' || 'landscape' || 'portrait',
+		aspect='square' || 'full' || '35' || 'hd'
 	)
+	
+	ratio	sdxl10		sdxlbeta	sd20
+	2:1								1024x512
+	21:9	1536x640
+	1.85:1							947x512
+	16:9	1344x768				910x512
+	7:4					896x512		896x512
+	3:2		1216x832	768x512		768x512
+	4:3					683x512		683x512
+	5:4		1152x896	640x512		640x512
+	1:1		1024x1024	512x512		512x512
+	
 	"""
 	def text_to_image(self,
 		prompt,
@@ -135,11 +214,12 @@ class StableDiffusion(StabilityAI):
 		seed=None,
 		steps=None,
 		cfg_scale=None,
-		width=None,
-		height=None,
 		filename_prefix=None,
 		filename_suffix=None,
-		return_args=False
+		return_args=False,
+		
+		orientation=None,
+		aspect=None
 	):
 		
 		data = prompt
@@ -153,37 +233,28 @@ class StableDiffusion(StabilityAI):
 				"filename": filename,
 				"seed": int(str(random.randrange(1000000000)).zfill(9)),
 				"steps": 30,
-				"cfg_scale": 7.0,
-				"width": 512,
-				"height": 512
+				"cfg_scale": 7.0
 			}
-		
+			
 			# Negative prompt
 			if negative_prompt:
 				data['negative_prompt'] = str(negative_prompt)
-		
+			
 			# Seed
 			if seed:
 				data['seed'] = common.convert_to_int(seed)
-		
+			
 			# Steps
 			if steps:
 				data['steps'] = common.convert_to_int(steps)
-		
+			
 			# CFG scale
 			if cfg_scale:
 				data['cfg_scale'] = common.convert_to_float(cfg_scale)
-		
-			# Size
-			if width:
-				data['width'] = common.convert_to_int(width)
-			if height:
-				data['height'] = common.convert_to_int(height)
 			
-			if data['width'] > 512 and data['height'] > 512:
-				data['width'] = 512
-				data['height'] = 512
-		
+			# Resolution
+			data['orientation'], data['aspect'], data['width'], data['height'] = self.get_resolution(orientation, aspect)
+			
 			# Filename
 			if not data['filename']:
 				if not self.save_directory:
@@ -194,16 +265,10 @@ class StableDiffusion(StabilityAI):
 					qfilename_prefix = filename_prefix + '-'
 				
 				qfilename_suffix = ''
-				if data['width'] > data['height']:
-					qfilename_suffix = '-landscape'
-				elif data['width'] < data['height']:
-					qfilename_suffix = '-portrait'
-				if data['width'] == 640 or data['height'] == 640:
-					qfilename_suffix += '-full'
-				elif data['width'] == 768 or data['height'] == 768:
-					qfilename_suffix += '-35'
-				elif data['width'] == 896 or data['height'] == 896:
-					qfilename_suffix += '-hd'
+				if orientation != 'square':
+					qfilename_suffix = '-' + orientation
+				if aspect != 'square':
+					qfilename_suffix += '-' + aspect
 				
 				if filename_suffix:
 					qfilename_suffix = '-' + filename_suffix
@@ -233,7 +298,7 @@ class StableDiffusion(StabilityAI):
 				)
 			)
 		
-		if self._dry_run:
+		if self.dry_run:
 			return True, data
 		
 		if self.name == 'sd15':
@@ -357,7 +422,7 @@ class ESRGAN(StabilityAI):
 		if self.log_level >= 7:
 			print(data)
 		
-		if self._dry_run:
+		if self.dry_run:
 			return True, data
 		
 		answers = self._stability_api.upscale(
@@ -436,7 +501,7 @@ class LatentUpscaler(StabilityAI):
 		if self.log_level >= 7:
 			print(data)
 		
-		if self._dry_run:
+		if self.dry_run:
 			return True, data
 		
 		answers = self._stability_api.upscale(

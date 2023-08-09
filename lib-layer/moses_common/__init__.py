@@ -75,8 +75,9 @@ def get_url(url, args={}, debug=False, dry_run=False):
 		url += '?' + query
 	
 	if debug or dry_run:
+		print("method:", method)
 		print("url:", url)
-		print("headers {}: {}".format(type(headers), headers))
+		print("headers: {}".format(headers))
 		if data:
 			print("data {}: {}".format(type(data), data))
 	
@@ -122,6 +123,8 @@ def get_oauth2_token(url, key, secret):
 		return None
 	return response_data['access_token']
 
+def url_encode(hash):
+	return urllib.parse.urlencode(hash)
 
 ## File formats
 

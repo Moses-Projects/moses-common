@@ -114,7 +114,7 @@ class Timer:
 	"""
 	def stop(self):
 		self._end_time = time.time()
-		return self.duration
+		return str(self)
 	
 	def as_string(self, args=None):
 		indent = ''

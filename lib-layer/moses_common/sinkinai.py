@@ -84,6 +84,25 @@ class SinkinAI:
 	def endpoint(self):
 		return "https://sinkin.ai/m/inference"
 	
+	def get_resolution(self, orientation='square', aspect='square'):
+		width = 768
+		height = 768
+		
+		if orientation == 'landscape':
+			width = 896
+			if aspect == 'full':
+				width = 640
+			elif aspect == '35':
+				width = 768
+		elif orientation == 'portrait':
+			height = 640
+			if aspect == '35':
+				height = 768
+			elif aspect == 'hd':
+				height = 896
+		
+		return orientation, aspect, width, height
+	
 	def get_png_info(self, data):
 		png_info = PngInfo()
 		flat_data = common.flatten_hash(data)
@@ -101,8 +120,8 @@ class SinkinAI:
 		seed=int,
 		steps=int,
 		cfg_scale=float,
-		width=512,
-		height=512
+		orientation='square' || 'landscape' || 'portrait',
+		aspect='square' || 'full' || '35' || 'hd'
 	)
 	"""
 	def text_to_image(self,
@@ -113,11 +132,12 @@ class SinkinAI:
 		seed=None,
 		steps=None,
 		cfg_scale=None,
-		width=None,
-		height=None,
 		filename_prefix=None,
 		filename_suffix=None,
-		return_args=False
+		return_args=False,
+		
+		orientation=None,
+		aspect=None
 	):
 	
 		data = prompt
@@ -134,9 +154,7 @@ class SinkinAI:
 				"filename": filename,
 				"seed": int(str(random.randrange(1000000000)).zfill(9)),
 				"steps": 30,
-				"cfg_scale": 7.0,
-				"width": 512,
-				"height": 512
+				"cfg_scale": 7.0
 			}
 			model_abbr = 'del'
 			
@@ -167,13 +185,10 @@ class SinkinAI:
 			# CFG scale
 			if cfg_scale:
 				data['cfg_scale'] = common.convert_to_float(cfg_scale)
-		
-			# Size
-			if width:
-				data['width'] = common.convert_to_int(width)
-			if height:
-				data['height'] = common.convert_to_int(height)
-		
+			
+			# Resolution
+			data['orientation'], data['aspect'], data['width'], data['height'] = self.get_resolution(orientation, aspect)
+			
 			# Filename
 			if not data['filename']:
 				if not self.save_directory:

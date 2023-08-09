@@ -153,12 +153,12 @@ class Collective:
 		negative_categories = self.get_negative_categories()
 		for artist in artists:
 			# Weed out the weird ones
-			skip = False
-			for negative in negative_categories:
-				if negative in artist.categories:
-					skip = True
-			if skip:
-				continue
+# 			skip = False
+# 			for negative in negative_categories:
+# 				if negative in artist.categories:
+# 					skip = True
+# 			if skip:
+# 				continue
 			
 			# Keep the ones that match
 			for main_category in art_forms:
@@ -215,21 +215,21 @@ class Collective:
 		# "A painting/illustration of {subject}"
 		subjects = {
 			"Anatomy":			{ "weight": 2,		"prompt": "anatomy" },
-			"Architecture":		{ "weight": 3,		"prompt": "architecture" },
+			"Architecture":		{ "weight": 6,		"prompt": "architecture" },
 			"Beach":			{ "weight": 1,		"prompt": "a beach" },
-			"Botanical":		{ "weight": 19,		"prompt": "botanical" },
+			"Botanical":		{ "weight": 4,		"prompt": "botanical" },
 			"Canal":			{ "weight": 1,		"prompt": "a canal" },
 			"Cat":				{ "weight": 2,		"prompt": "cats" },
 			"Character Design":	{ "weight": 0,		"prompt": "a character design" },
 			"Cityscape":		{ "weight": 17,		"prompt": "a cityscape" },
 			"City Street":		{ "weight": 1,		"prompt": "a city street" },
 			"Dance":			{ "weight": 0,		"prompt": "dance" },
-			"Landscape":		{ "weight": 132,	"prompt": "a landscape" },
+			"Landscape":		{ "weight": 64,		"prompt": "a landscape" },
 			"Logo":				{ "weight": 0,		"prompt": "a logo" },
 			"Marine":			{ "weight": 13,		"prompt": "a marine seascape" },
 			"Nudity":			{ "weight": 0,		"prompt": "nudity" },
 			"Ornithology":		{ "weight": 2,		"prompt": "ornithology" },
-			"Portrait":			{ "weight": 0,		"prompt": "a portrait" },
+			"Portrait":			{ "weight": 5,		"prompt": "a portrait" },
 			"Railroad":			{ "weight": 1,		"prompt": "a train" },
 			"Still Life":		{ "weight": 2,		"prompt": "a still life" },
 			"Windmill":			{ "weight": 1,		"prompt": "a windmill" }
@@ -430,7 +430,8 @@ class Artist:
 	@property
 	def model(self):
 		if self.data.get('preferred_model'):
-			return self.data.get('preferred_model')
+# 			return self.data.get('preferred_model')
+			return 'sdxl10'
 		return self.get_short_model_name(self.data.get('Checkpoint', 'sdxl'))
 	
 	@property
@@ -551,7 +552,11 @@ class Artist:
 		return query
 	
 	def get_short_model_name(self, full_name=None):
-		if re.match(r'Stable Diffusion XL', full_name.re.IGNORECASE):
+		if re.match(r'Stable Diffusion XL 0.9', full_name.re.IGNORECASE):
+			return 'sdxl09'
+		elif re.match(r'Stable Diffusion XL 1.0', full_name.re.IGNORECASE):
+			return 'sdxl10'
+		elif re.match(r'Stable Diffusion XL', full_name.re.IGNORECASE):
 			return 'sdxl'
 		elif re.match(r'Stable Diffusion 1.5', full_name.re.IGNORECASE):
 			return 'sd15'
@@ -565,8 +570,12 @@ class Artist:
 			return None
 
 	def get_full_model_name(self, short_name=None):
-		if short_name == 'sdxl':
-			return "Stable Diffusion XL"
+		if short_name == 'sdxl09':
+			return "Stable Diffusion XL 0.9"
+		elif short_name == 'sdxl10':
+			return "Stable Diffusion XL 1.0"
+		elif short_name in ['sdxl', 'sd']:
+			return "Stable Diffusion XL Beta"
 		elif short_name == 'sd15':
 			return "Stable Diffusion 1.5"
 		elif short_name == 'del':
