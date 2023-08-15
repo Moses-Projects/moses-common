@@ -747,12 +747,18 @@ class DBH:
 			data_type = column['data_type'].lower()
 			
 			if column_name not in data:
-				if check_nullable and required:
+				if check_nullable and required and not column['column_default']:
 					errors.append(f"'{column_name}' is required")
 				continue
 			
 			value = data[column_name]
-			if data_type == 'boolean':
+			if value is None:
+				if check_nullable and required:
+					if not column['column_default']:
+						errors.append(f"'{column_name}' can't be NULL")
+					continue
+				insert[column_name] = self._quote_single_value(value)
+			elif data_type == 'boolean':
 				value = common.convert_to_bool(value)
 				if value is None:
 					errors.append(f"'{column_name}' cannot convert to a boolean")

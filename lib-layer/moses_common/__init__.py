@@ -4,6 +4,7 @@ import base64
 import csv
 import datetime
 import json
+import math
 import os
 import re
 import requests
@@ -511,7 +512,7 @@ def _map_csv_record(record, mapping):
 				multiplier = convert_to_float(definition['multiplier'])
 				if multiplier is not None:
 					value = float_value * multiplier
-			value = convert_to_int(value)
+			value = convert_to_int(round_half_up(value))
 			if value is not None:
 				new_record[key] = value
 		elif field_type == 'float':
@@ -529,6 +530,12 @@ def _map_csv_record(record, mapping):
 					test_match = re.compile(r'\b{}\b'.format(test), re.IGNORECASE)
 					if re.search(test_match, value):
 						new_record[key] = True
+			elif 'false' in definition and type(definition['false']) is list:
+				new_record[key] = True
+				for test in definition['false']:
+					test_match = re.compile(r'\b{}\b'.format(test), re.IGNORECASE)
+					if re.search(test_match, value):
+						new_record[key] = False
 			elif value:
 				new_record[key] = True
 		elif field_type == 'datetime':
@@ -718,6 +725,13 @@ def conjunction(orig_words, conj='and'):
 		return ', '.join(words[:len(words)-1]) + ',' + conj + words[-1]
 
 
+## Number handling
+
+def round_half_up(n, decimals=0):
+	multiplier = 10**decimals
+	return math.floor(n * multiplier + 0.5) / multiplier
+
+
 ## Hash handling
 
 """
@@ -885,7 +899,7 @@ def convert_float_to_time(input):
 	if re.search(r'\.', text):
 		parts = text.split(r'.')
 		hour = convert_to_int(parts[0])
-		minutes = int(round(int(parts[1]) * 0.6, 0))
+		minutes = int(round_half_up(int(parts[1]) * 0.6, 0))
 	input = f"{hour:02d}:{minutes:02d}:00"
 	try:
 		datetime_obj = datetime.datetime.strptime(input, '%H:%M:%S')
