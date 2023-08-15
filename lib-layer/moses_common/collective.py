@@ -1,4 +1,4 @@
-# print("Loaded Visual Artists module")
+# print("Loaded Collective module")
 
 import os
 import random
@@ -11,7 +11,7 @@ import moses_common.dynamodb
 import moses_common.openai
 import moses_common.ui
 
-artist_table = moses_common.dynamodb.Table('artintelligence.gallery-artists')
+artist_table = moses_common.dynamodb.Table('artintelligence.gallery-collective')
 artist_list = None
 
 """
@@ -28,13 +28,11 @@ class Collective:
 		dry_run = False
 	)
 	"""
-	def __init__(self, artist_list_location, log_level=5, dry_run=False):
+	def __init__(self, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self.dry_run = dry_run
 		self.ui = moses_common.ui.Interface()
 		artist_table.log_level = log_level
-		
-		self._artist_list_filename = artist_list_location + '/.visual_artists.json'
 	
 	
 	@property
@@ -49,62 +47,16 @@ class Collective:
 	def artist_count(self):
 		return artist_table.item_count
 	
-	@property
-	def artist_list_url(self):
-		return 'https://supagruen.github.io/StableDiffusion-CheatSheet/src/data.js'
-	
-	@property
-	def artist_list_filename(self):
-		return self._artist_list_filename
-	
-	def has_artist_list(self):
-		if os.path.isfile(self.artist_list_filename):
-			return True
-		return False
-	
-	def retrieve_artist_list(self):
-		self.ui.body("Retrieving artist list...")
-		response_code, response_data = common.get_url(self.artist_list_url, dry_run=self.dry_run)
-		response_data = re.sub(r'^.*?\[', '[', response_data)
-		response_data = re.sub(r';$', '', response_data)
-		# Remove escaped single quotes; they are invalid in JSON
-		response_data = re.sub(r"\\'", "'", response_data)
-		
-		if self.dry_run:
-			self.ui.dry_run(f"Write to '{self.artist_list_filename}'")
-		else:
-			common.write_file(self.artist_list_filename, response_data)
-	
 	def get_all_artist_ids(self):
 		artists_ids = artist_table.get_keys_as_list()
 		return artists_ids
-	
-	def sync_artists_to_db(self):
-		old_artists_ids = self.get_all_artist_ids()
-		self.retrieve_artist_list()
-		new_artists = common.read_file(self.artist_list_filename)
-		updated_cnt = 0
-		for new_artist in new_artists:
-			artist = Artist(
-				self,
-				new_artist,
-				log_level = self.log_level,
-				dry_run = self.dry_run
-			)
-			if artist.id not in old_artists_ids:
-				if log_level >= 6:
-					self.ui.body(f"  Add artist {artist.name}")
-				new_artist['id'] = artist.id
-				artist_table.put_item(new_artist)
-				updated_cnt += 1
-		return updated_cnt
 	
 	def get_artists(self):
 		global artist_list
 		
 		if not artist_list:
 			artist_list = artist_table.scan()
-			artist_list = sorted(artist_list, key=lambda artist: artist['Name']) 
+			artist_list = sorted(artist_list, key=lambda artist: artist['sort_name']) 
 		
 		artists = []
 		for artist_data in artist_list:
@@ -120,9 +72,6 @@ class Collective:
 	def get_artist(self, artist_name):
 		if not artist_name:
 			return None
-		if re.search(r',', artist_name):
-			parts = artist_name.split(',')
-			artist_name = parts[1] + ' ' + parts[0]
 		artists = self.get_artists()
 		for artist in artists:
 			artist_match = re.compile(r'\b{}\b'.format(common.normalize(artist_name)))
@@ -351,32 +300,54 @@ class Artist:
 	"""
 	artist = visual_artists.Artist(collective, data)
 	artist = visual_artists.Artist(collective, {
-			"Type": "1",
-			"Name": "Abbey, Edwin Austin",
-			"Born": "1852",
-			"Death": "1911",
-			"Prompt": "style of Edwin Austin Abbey",
-			"NPrompt": "",
-			"Category": "Illustration, Painting, Oil, Pastel, Ink, USA, 19th Century",
-			"Checkpoint": "Deliberate 2.0",
-			"Extrainfo": "",
-			"Image": "Edwin-Austin-Abbey.webp",
-			"Creation": "202306200852"
+			"id": "floris_arntzenius",
+			"biography": {
+				"born": "1864",
+				"country": "Netherlands",
+				"died": "1925",
+				"primary_style": null,
+				"time_period": "19th century",
+				"wikipedia_summary": "Pieter Florentius Nicolaas Jacobus Arntzenius (9 June 1864 \u2013 16 February 1925) was a Dutch painter, ...",
+				"wikipedia_title": "Floris Arntzenius",
+				"wikipedia_url": "https://en.wikipedia.org/wiki/Floris_Arntzenius"
+			},
+			"create_time": "2023-08-11 11:06:33.182012",
+			"name": "Floris Arntzenius",
+			"sort_name": "Arntzenius, Floris",
+			"update_time": "2023-08-11 11:06:33.182012",
+			"works": [
+				{
+					"art_forms": [
+						"illustration",
+						"painting"
+					],
+					"art_methods": [
+						"watercolor",
+						"oil",
+						"watercolor"
+					],
+					"aspect_ratios": [
+						"1:square"
+					],
+					"modifiers": [],
+					"styles": [],
+					"subjects": [
+						"landscape",
+						"portrait"
+					]
+				}
+			]
 		},
 		log_level = 5,
 		dry_run = False
 	)
-	
-	artist.id
-	artists.name
-	artists.categories
 	"""
 	def __init__(self, collective, data, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self.dry_run = dry_run
 		self.collective = collective
 		self.data = data
-		self.id = common.convert_to_snakecase(common.normalize(self.name, strip_single_chars=False))
+		self.id = self.data.id
 	
 	@property
 	def log_level(self):
@@ -388,63 +359,15 @@ class Artist:
 	
 	@property
 	def name(self):
-		if 'Prompt' in self.data:
-			artist_name = re.sub(r'style of ', '', self.data['Prompt'], re.IGNORECASE)
-			artist_name = re.sub(r',.*$', '', artist_name)
-			artist_name = re.sub(r' *\(.*?\)', '', artist_name)
-			return artist_name
-		if 'Name' in self.data:
-			artist_name = re.sub(r' ?\(.*?\)', '', self.data['Name'], re.IGNORECASE)
-			if re.search(r',', artist_name):
-				name_list = self.data['Name'].split(', ')
-				return name_list[1] + ' ' + name_list[0]
-			return artist_name
-		return None
+		return self.data.get('name')
 	
 	@property
 	def sort_name(self):
-		return self.data.get('Name')
-	
-	@property
-	def categories(self):
-		if 'Category' in self.data:
-			categories = self.data['Category'].split(', ')
-			return categories
-		return []
-	
-	@property
-	def art_forms(self):
-		art_form_info = self.collective.get_art_forms()
-		art_forms = art_form_info.keys()
-		
-		artist_art_forms = []
-		for art_form_name, art_form_data in art_form_info.items():
-			if art_form_name in self.categories:
-				artist_art_forms.append(art_form_data)
-		return artist_art_forms
-	
-	@property
-	def checkpoint(self):
-		return self.data.get('Checkpoint')
+		return self.data.get('sort_name')
 	
 	@property
 	def model(self):
-		if self.data.get('preferred_model'):
-# 			return self.data.get('preferred_model')
-			return 'sdxl10'
-		return self.get_short_model_name(self.data.get('Checkpoint', 'sdxl'))
-	
-	@property
-	def full_model(self):
-		if self.data.get('preferred_model'):
-			return self.get_full_model_name(self.data.get('preferred_model'))
-		return self.get_full_model_name(self.data.get('Checkpoint', 'Stable Diffusion XL'))
-	
-	@property
-	def image_url(self):
-		if 'Image' in self.data:
-			return 'https://supagruen.github.io/StableDiffusion-CheatSheet/img/' + self.data['Image']
-		return None
+		return self.data.get('preferred_model', 'sdxl10'):
 	
 	def get_settings(self):
 		settings = {}

@@ -99,20 +99,24 @@ class StableDiffusion(StabilityAI):
 		dry_run = False
 	)
 	"""
-	def __init__(self, stability_key=None, save_directory=None, model=None, log_level=5, dry_run=False):
+	def __init__(self, stability_key=None, save_directory=None, model='sdxl10', log_level=5, dry_run=False):
 		super().__init__(stability_key=stability_key, save_directory=save_directory, log_level=log_level, dry_run=dry_run)
 		
-		engine = 'stable-diffusion-xl-beta-v2-2-2'
-		self._name = 'sdxl'
 		if model == 'sd15':
 			engine = 'stable-diffusion-v1-5'
 			self._name = 'sd15'
+		elif model == 'sdxl':
+			engine = 'stable-diffusion-xl-beta-v2-2-2'
+			self._name = 'sdxl'
 		elif model == 'sdxl09':
 			engine = 'stable-diffusion-xl-1024-v0-9'
 			self._name = 'sdxl09'
 		elif model == 'sdxl10':
 			engine = 'stable-diffusion-xl-1024-v1-0'
 			self._name = 'sdxl10'
+		else:
+			raise ValueError("Invalid model")
+		
 		self._stability_api = client.StabilityInference(
 			key = self.stability_key,
 				# API Key reference.
@@ -195,16 +199,16 @@ class StableDiffusion(StabilityAI):
 		aspect='square' || 'full' || '35' || 'hd'
 	)
 	
-	ratio	sdxl10		sdxlbeta	sd20
-	2:1								1024x512
-	21:9	1536x640
-	1.85:1							947x512
-	16:9	1344x768				910x512
-	7:4					896x512		896x512
-	3:2		1216x832	768x512		768x512
-	4:3					683x512		683x512
-	5:4		1152x896	640x512		640x512
-	1:1		1024x1024	512x512		512x512
+			ratio	sdxl10		sdxlbeta	sd20
+	ultra	21:9	1536x640							2.4
+	ultra	2:1								1024x512	2.0
+			1.85:1							947x512		1.85
+	hd		16:9	1344x768				910x512		1.78
+	hd		7:4					896x512		896x512		1.75
+	35		3:2		1216x832	768x512		768x512		1.5
+			4:3					683x512		683x512		1.33
+	full	5:4		1152x896	640x512		640x512		1.25
+	square	1:1		1024x1024	512x512		512x512		1
 	
 	"""
 	def text_to_image(self,

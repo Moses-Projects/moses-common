@@ -83,12 +83,28 @@ class GPT(OpenAI):
 		dry_run = False
 	)
 	"""
-	def __init__(self, openai_api_key=None, log_level=5, dry_run=False):
+	def __init__(self, openai_api_key=None, model=None, log_level=5, dry_run=False):
 		super().__init__(openai_api_key=openai_api_key, log_level=log_level, dry_run=dry_run)
+		self.model = model
+		
+	
+	@property
+	def model(self):
+		return self._model
+	
+	@model.setter
+	def model(self, value):
+		if re.match(r'gpt-3', value):
+			self._model = 'gpt-3.5-turbo'
+		else:
+			self._model = 'gpt-4'
 	
 	@property
 	def label(self):
-		return "GPT 3.5"
+		if re.match(r'gpt-3', self.model):
+			return "GPT 3.5"
+		else:
+			return "GPT 4"
 	
 	"""
 	gpt.chat(prompt)
@@ -101,11 +117,12 @@ class GPT(OpenAI):
 			return "Dry run prompt"
 		
 		completion = openai.ChatCompletion.create(
-			model = "gpt-3.5-turbo",
+			model = self.model,
 			messages = [{
 				"role": "user",
 				"content": prompt
-			}]
+			}],
+			temperature = 1.0
 		)
 		
 		answer = None
