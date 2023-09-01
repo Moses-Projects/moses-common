@@ -373,7 +373,7 @@ class Interface:
 		return indent + ' '
 	
 	def process_whitespace(self, text):
-		if self.is_aws_lambda and self.force_whitespace:
+		if self.is_aws_lambda and self.force_whitespace and type(text) is str:
 			return re.sub(r'  ', '. ', text)
 		return text
 	
