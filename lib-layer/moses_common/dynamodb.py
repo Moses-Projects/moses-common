@@ -364,7 +364,7 @@ class Table:
 	Same args as query() except limit and offset.
 	update_expression, attribute_names, attribute_values = table.get_update_expression(partition_key_value, args=None)
 	"""
-	def get_update_expression(self, item):
+	def get_update_expression(self, item, remove_keys=None):
 		if item and type(item) is not dict:
 			raise TypeError("item must be dict")
 		
@@ -384,11 +384,24 @@ class Table:
 			attribute_values[":v" + str(count)] = self.convert_to_attribute_value(value)
 			expression = "#k{} = :v{}".format(str(count), str(count))
 			expression_list.append(expression)
+		update_expression = ''
+		if len(expression_list):
+			update_expression = "SET " + ', '.join(expression_list)
 		
-		if len(expression_list) < 1:
+		if remove_keys:
+			remove_list = []
+			for key in remove_keys:
+				count += 1
+				attribute_names["#k" + str(count)] = key
+				expression = "#k{}".format(str(count))
+				remove_list.append(expression)
+			if len(remove_list):
+				if update_expression:
+					update_expression += ' '
+				update_expression += "REMOVE " + ', '.join(remove_list)
+		
+		if not update_expression:
 			return True, True, True
-		update_expression = "SET " + ', '.join(expression_list)
-		
 		return update_expression, attribute_names, attribute_values
 	
 	"""
@@ -600,7 +613,7 @@ class Table:
 	"""
 	table.update_item(item)
 	"""
-	def update_item(self, item):
+	def update_item(self, item, remove_keys=None):
 		if type(item) is not dict:
 			raise TypeError("item must be a dict")
 			return
@@ -618,7 +631,7 @@ class Table:
 				return
 			key_object[self._sort_key.name] = self.convert_to_attribute_value(item[self._sort_key.name], self._sort_key.type)
 		
-		update_expression, attribute_names, attribute_values = self.get_update_expression(item)
+		update_expression, attribute_names, attribute_values = self.get_update_expression(item, remove_keys)
 		if update_expression and type(update_expression) == type(True):
 			return True
 		if self.log_level >= 7:
@@ -629,6 +642,8 @@ class Table:
 		
 		if self.dry_run:
 			self.ui.dry_run("Update item: {}".format(item))
+			if remove_keys:
+				self.ui.dry_run("Remove keys: ['{}']".format("', '".join(remove_keys)))
 			return True
 		try:
 			response = boto3_client.update_item(

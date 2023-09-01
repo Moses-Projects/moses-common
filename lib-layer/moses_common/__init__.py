@@ -439,7 +439,7 @@ def read_csv(filepath, delimiter=',', mapping=None):
 	return records
 
 """
-mapping = {
+new_records = common.map_csv(records, {
 	"field": "csv_field_name",
 	"field": { "name": "csv_field_name" },
 	"field": { "name": "csv_field_name", "type": "str", "transforms": ['lower', 'remove_extra_spaces'] },
@@ -447,7 +447,7 @@ mapping = {
 	"field": { "name": "csv_field_name", "type": "float" },
 	"field": { "name": "csv_field_name", "type": "bool", "true": ['yes', 'y'] },
 	"field": { "type": "literal", "value": "value_of_any_type" }
-}
+})
 """
 def map_csv(records, mapping):
 	new_records = []

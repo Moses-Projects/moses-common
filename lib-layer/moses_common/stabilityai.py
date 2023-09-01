@@ -142,7 +142,11 @@ class StableDiffusion(StabilityAI):
 			return "Stable Diffusion XL 1.0"
 		return "Stable Diffusion XL"
 	
-	def get_resolution(self, orientation='square', aspect='square'):
+	def get_resolution(self, orientation=None, aspect=None):
+		if not orientation:
+			orientation = 'square'
+		if not aspect:
+			aspect = 'square'
 		width = 512
 		height = 512
 		
@@ -269,10 +273,10 @@ class StableDiffusion(StabilityAI):
 					qfilename_prefix = filename_prefix + '-'
 				
 				qfilename_suffix = ''
-				if orientation != 'square':
-					qfilename_suffix = '-' + orientation
-				if aspect != 'square':
-					qfilename_suffix += '-' + aspect
+				if data['orientation'] != 'square':
+					qfilename_suffix = '-' + data['orientation']
+				if data['aspect'] != 'square':
+					qfilename_suffix += '-' + data['aspect']
 				
 				if filename_suffix:
 					qfilename_suffix = '-' + filename_suffix

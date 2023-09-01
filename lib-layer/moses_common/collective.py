@@ -11,19 +11,22 @@ import moses_common.dynamodb
 import moses_common.openai
 import moses_common.ui
 
+settings_table = moses_common.dynamodb.Table('artintelligence.gallery-settings')
 artist_table = moses_common.dynamodb.Table('artintelligence.gallery-collective')
 artist_list = None
+genres_table = moses_common.dynamodb.Table('artintelligence.gallery-works')
+genres_list = None
+unique_genre_names = None
 
 """
-import moses_common.visual_artists as visual_artists
+import moses_common.collective as collective
 """
 
 class Collective:
 	"""
-	collective = visual_artists.Collective(artist_list_location)
-	collective = visual_artists.Collective(artist_list_location, log_level=log_level, dry_run=dry_run)
-	collective = visual_artists.Collective(
-		artist_list_location,
+	collective = collective.Collective()
+	collective = collective.Collective(log_level=log_level, dry_run=dry_run)
+	collective = collective.Collective(
 		log_level = 5,
 		dry_run = False
 	)
@@ -32,7 +35,11 @@ class Collective:
 		self.log_level = log_level
 		self.dry_run = dry_run
 		self.ui = moses_common.ui.Interface()
+		self.genres_last_update = common.get_dt_now()
+		artist_table.dry_run = dry_run
 		artist_table.log_level = log_level
+		genres_table.dry_run = dry_run
+		genres_table.log_level = log_level
 	
 	
 	@property
@@ -47,105 +54,253 @@ class Collective:
 	def artist_count(self):
 		return artist_table.item_count
 	
+	@property
+	def artists(self):
+		global artist_list
+		
+		if not artist_list:
+			artist_records = artist_table.scan()
+			artist_records = sorted(artist_records, key=lambda artist: artist['sort_name'])
+			
+			artist_list = []
+			for artist_data in artist_records:
+				artist = Artist(
+					self,
+					artist_data,
+					log_level = self.log_level,
+					dry_run = self.dry_run
+				)
+				artist_list.append(artist)
+		return artist_list
+	
+	@property
+	def genres(self):
+		global genres_list
+		
+		if not genres_list or self.genres_were_updated():
+			self.ui.warning("Loading genres")
+			genres_records = genres_table.scan()
+			genres_records = sorted(genres_records, key=lambda genres: genres['name']) 
+			
+			self.genres_last_update = common.get_dt_now()
+			
+			genres_list = []
+			unique_genre_names = []
+			unique_map = {}
+			for genres_data in genres_records:
+				artist = self.get_artist_by_id(genres_data['artist_id'])
+				genre = Genre(
+					artist,
+					genres_data,
+					log_level = self.log_level,
+					dry_run = self.dry_run
+				)
+				genres_list.append(genre)
+		
+		return genres_list
+	
 	def get_all_artist_ids(self):
 		artists_ids = artist_table.get_keys_as_list()
 		return artists_ids
 	
-	def get_artists(self):
-		global artist_list
-		
-		if not artist_list:
-			artist_list = artist_table.scan()
-			artist_list = sorted(artist_list, key=lambda artist: artist['sort_name']) 
-		
-		artists = []
-		for artist_data in artist_list:
-			artist = Artist(
-				self,
-				artist_data,
-				log_level = self.log_level,
-				dry_run = self.dry_run
-			)
-			artists.append(artist)
-		return artists
+	def get_artist_by_id(self, artist_id):
+		for artist in self.artists:
+			if artist.id == artist_id:
+				return artist
+		return None
 	
-	def get_artist(self, artist_name):
+	def get_artist_by_name(self, artist_name):
 		if not artist_name:
 			return None
-		artists = self.get_artists()
-		for artist in artists:
+		for artist in self.artists:
 			artist_match = re.compile(r'\b{}\b'.format(common.normalize(artist_name)))
 			if re.search(artist_match, common.normalize(artist.name)):
 				return artist
 		return None
 	
-	def choose_subject(self):
-		centuries, subjects, styles = self.get_categories()
+	def genres_were_updated(self):
+		record = settings_table.get_item('genres_last_update')
+		print("record {}: {}".format(type(record), record))
+		dt = common.get_datetime_from_string(record['value'])
+		if self.genres_last_update and self.genres_last_update < dt:
+			return True
+		return False
+	
+	def set_genres_update(self):
+		settings_table.update_item({
+			"name": "genres_last_update",
+			"value": common.get_dt_now()
+		})
+	
+	def choose_category(self, tags):
+		if not tags:
+			return None
 		
+		# Disassemble tags
+		full_tags = []
 		total = 0
-		for info in subjects.values():
-			total += info['weight']
-			info['cumulative'] = total
+		for tag in tags:
+			new_tag = {
+				"weight": 1,
+				"name": tag
+			}
+			if re.search(r':', tag):
+				parts = tag.split(':')
+				if not parts[1]:
+					parts[1] = None
+				new_tag = {
+					"weight": common.convert_to_int(parts[0]),
+					"name": parts[1]
+				}
+			total += new_tag['weight']
+			new_tag['cumulative'] = total
+			full_tags.append(new_tag)
+	
+		# Choose a tag
 		score = random.randint(1,total)
-		
-		subject = None
-		for name, info in subjects.items():
-			if score <= info['cumulative']:
-				return name
+		for tag in full_tags:
+			if score <= tag['cumulative']:
+				return tag['name']
 		return None
+	
+	def split_tag(self, tag):
+		weight = 1
+		cat = tag
+		if re.search(r':', tag):
+			parts = tag.split(':')
+			if not parts[1]:
+				parts[1] = None
+			weight = common.convert_to_int(parts[0])
+			cat = parts[1]
+		return weight, cat
 		
-	def choose_artist(self, subject=None):
-		artists = self.get_artists()
-		art_forms = self.get_art_forms()
+	
+	def get_random_work(self, artist_name=None, genre_name=None):
+		selected_artist = self.get_artist_by_name(artist_name)
 		
-		artist_batch = []
-		negative_categories = self.get_negative_categories()
-		for artist in artists:
-			# Weed out the weird ones
-# 			skip = False
-# 			for negative in negative_categories:
-# 				if negative in artist.categories:
-# 					skip = True
-# 			if skip:
-# 				continue
+		selected_genre = genre_name
+		if not selected_genre:
+			genres = self.get_genre_list()
+			selected_genre = self.choose_category(genres)
+		
+		
+		batch_list = []
+		for genre in self.genres:
+			if selected_artist:
+				if selected_artist.id == genre.artist_id:
+					if genre_name:
+						if genre_name == genre.name:
+							batch_list.append(genre)
+					else:
+						batch_list.append(genre)
+			elif selected_genre == genre.name:
+				batch_list.append(genre)
+		
+		if not batch_list:
+			return None
+		index = random.randrange(len(batch_list))
+		return batch_list[index]
+		
+	"""
+	genres = collective.get_genre_list()
+	"""
+	def get_genre_list(self):
+		weighted_genre_list = [
+			"default",
+			"abstract",
+			"advertisement",
+			"allegorical painting",
+			"anatomy",
+			"animal painting",
+			"animation",
+			"architecture",
+			"battle painting",
+			"botanical",
+			"caricature",
+			"character design",
+			"cityscape",
+			"design",
+			"digital",
+			"genre painting",
+			"graffiti",
+			"history painting",
+			"illustration",
+			"interior",
+			"landscape",
+			"manga",
+			"marine",
+			"mural",
+			"mythological painting",
+			"photograph",
+			"pin-up",
+			"portrait",
+			"poster",
+			"religious painting",
+			"sculpture",
+			"sketch and study",
+			"still life",
+			"symbolic painting",
+			"wildlife painting"
+		]
 			
-			# Keep the ones that match
-			for main_category in art_forms:
-				if main_category in artist.categories:
-					if not subject or subject in artist.categories:
-						artist_batch.append(artist)
-						break
-		
-		print("# of artists: " + str(len(artist_batch)))
-		index = random.randrange(len(artist_batch))
-		return artist_batch[index]
+# 			"veduta", # cityscape
+# 			"capriccio", # ruins
+# 			"tronie",
+# 			"pastorale",
+# 			"panorama",
+			
+		unique_genre_names = []
+		unique_map = {}
+		for genre in self.genres:
+			for weighted_genre in weighted_genre_list:
+				if weighted_genre != genre.name:
+					continue
+				if genre.name not in unique_map:
+					unique_map[genre.name] = True
+					unique_genre_names.append(genre.name)
+		return unique_genre_names
 	
 	"""
-	art_forms = collective.get_art_forms()
+	methods = collective.get_all_methods()
+	art_methods = [
+		"acrylic painting",
+		"aquatint print",
+		"chalk drawing",
+		"charcoal drawing",
+		"concept art",
+		"digital",
+		"engraving",
+		"fresco",
+		"frieze",
+		"glass",
+		"gouache painting",
+		"ink drawing",
+		"linocut",
+		"lithograph",
+		"marble sculpture",
+		"oil painting",
+		"painting",
+		"pastel",
+		"pen drawing",
+		"pencil drawing",
+		"pencil sketch",
+		"photograph",
+		"print illustration",
+		"screen print",
+		"sculpture",
+		"tempera painting",
+		"watercolor painting",
+		"woodblock print",
+		"woodcut"
+	]
 	"""
-	def get_art_forms(self):
-		art_forms = {
-			"Illustration": {
-				"name": "illustration",
-				"methods": ["Aquatint", "Chalk", "Charcoal", "Engraving", "Ink", "Linocut", "Lithography", "Pencil", "Print", "Screen Print", "Watercolor", "Woodcut", "Woodblock Print"]
-			},
-			"Drawing": {
-				"name": "drawing"
-			},
-			"Painting": {
-				"name": "painting",
-				"methods": ["Acrylic", "Gouache", "Guache", "Lithography", "Oil", "Pastel", "Pastels", "Tempera", "Watercolor"]
-			},
-			"Photography": {
-				"name": "photograph"
-			},
-			"Sculpture": {
-				"name": "sculpture",
-				"methods": ["Marble"]
-			}
-		}
-		art_forms['Drawing']['methods'] = art_forms['Illustration']['methods']
-		return art_forms
+	def get_all_methods(self):
+		method_map = {}
+		for genre in self.genres:
+			for method in genre.data['methods']:
+				weight, tag = self.split_tag(method)
+				method_map[tag] = True
+		return sorted(method_map.keys())
 	
 	"""
 	centuries, subjects, styles = collective.get_categories()
@@ -298,45 +453,19 @@ class Collective:
 
 class Artist:
 	"""
-	artist = visual_artists.Artist(collective, data)
-	artist = visual_artists.Artist(collective, {
-			"id": "floris_arntzenius",
-			"biography": {
-				"born": "1864",
-				"country": "Netherlands",
-				"died": "1925",
-				"primary_style": null,
-				"time_period": "19th century",
-				"wikipedia_summary": "Pieter Florentius Nicolaas Jacobus Arntzenius (9 June 1864 \u2013 16 February 1925) was a Dutch painter, ...",
-				"wikipedia_title": "Floris Arntzenius",
-				"wikipedia_url": "https://en.wikipedia.org/wiki/Floris_Arntzenius"
-			},
+	artist = collective.Artist(collective, data)
+	artist = collective.Artist(collective, {
 			"create_time": "2023-08-11 11:06:33.182012",
+			"update_time": "2023-08-16 05:18:03.015674",
+			"id": "floris_arntzenius",
 			"name": "Floris Arntzenius",
 			"sort_name": "Arntzenius, Floris",
-			"update_time": "2023-08-11 11:06:33.182012",
-			"works": [
-				{
-					"art_forms": [
-						"illustration",
-						"painting"
-					],
-					"art_methods": [
-						"watercolor",
-						"oil",
-						"watercolor"
-					],
-					"aspect_ratios": [
-						"1:square"
-					],
-					"modifiers": [],
-					"styles": [],
-					"subjects": [
-						"landscape",
-						"portrait"
-					]
-				}
-			]
+			"born": "1864",
+			"died": "1925",
+			"country": "Netherlands",
+			"wikipedia_title": "Floris Arntzenius",
+			"wikipedia_summary": "Pieter Florentius Nicolaas Jacobus Arntzenius (9 June 1864 \u2013 16 February 1925) was a Dutch painter...",
+			"wikipedia_url": "https://en.wikipedia.org/wiki/Floris_Arntzenius"
 		},
 		log_level = 5,
 		dry_run = False
@@ -345,9 +474,9 @@ class Artist:
 	def __init__(self, collective, data, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self.dry_run = dry_run
+		self.ui = moses_common.ui.Interface()
 		self.collective = collective
 		self.data = data
-		self.id = self.data.id
 	
 	@property
 	def log_level(self):
@@ -356,6 +485,10 @@ class Artist:
 	@log_level.setter
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
+	
+	@property
+	def id(self):
+		return self.data.get('id')
 	
 	@property
 	def name(self):
@@ -366,182 +499,71 @@ class Artist:
 		return self.data.get('sort_name')
 	
 	@property
-	def model(self):
-		return self.data.get('preferred_model', 'sdxl10'):
+	def genres(self):
+		genres = []
+		for genre in self.collective.genres:
+			if genre.artist_id != self.id:
+				continue
+			genres.append(genre)
+		return genres
 	
-	def get_settings(self):
-		settings = {}
-		if 'Extrainfo' not in self.data:
-			return None
-		
-		extra = self.data['Extrainfo']
-		parts = re.search(r'(\d+) steps\b', extra, re.IGNORECASE)
-		if parts:
-			settings['steps'] = common.convert_to_int(parts.group(1))
-		parts = re.search(r'\bsteps:? (\d+)', extra, re.IGNORECASE)
-		if parts:
-			settings['steps'] = common.convert_to_int(parts.group(1))
-		parts = re.search(r'\bcfg scale:? ([0-9.]+)', extra, re.IGNORECASE)
-		if parts:
-			settings['cfg_scale'] = common.convert_to_float(parts.group(1))
-		
-		return settings
+	@property
+	def genre_data(self):
+		genres = []
+		for genre in self.collective.genres:
+			if genre.artist_id != self.id:
+				continue
+			genres.append(genre.data)
+		return genres
 	
-	def get_category_by_type(self, full_list, categories, lower=False):
-		lower_cats = [element.lower() for element in categories]
-		short_list = []
-		for item in full_list:
-			if item.lower() in lower_cats:
-				if lower:
-					short_list.append(item.lower())
-				else:
-					short_list.append(item)
-		return short_list
+	def __str__(self):
+		return f"<moses_common.collective.Artist {self.id}>"	
 	
-	def choose_category(self, full_list, categories):
-		lower_cats = [element.lower() for element in categories]
-		short_list = []
-		for item in full_list:
-			if item.lower() in lower_cats:
-				short_list.append(item)
-		if len(short_list):
-			index = random.randrange(len(short_list))
-			return short_list[index]
-		else:
-			return None
 	
-	def get_query(self, chosen_subject=None):
-		art_forms = self.collective.get_art_forms()
-		centuries, subjects, styles = self.collective.get_categories()	
-		
-		# Assemble query
-		query = {
-			"artist": self.name,
-			"model": self.model
-		}
-		
-		# Art form and method
-		qart_form = ' of art'
-		art_form = self.choose_category(list(art_forms.keys()), self.categories)
-		if art_form:
-			query['art_form'] = art_forms[art_form]['name']
-			art_form_name = art_forms[art_form]['name']
-			qart_form = f" of a {art_form_name}"
-			if re.match(r'[aeiou]', art_form_name):
-				qart_form = f" of an {art_form_name}"
-			
-			# Method
-			if 'methods' in art_forms[art_form]:
-				method = self.choose_category(art_forms[art_form]['methods'], self.categories)
-				if method:
-					query['method'] = method.lower()
-					qart_form = f" of a {query['method']} {art_form_name}"
-					if re.match(r'[aeiou]', query['method']):
-						qart_form = f" of an {query['method']} {art_form_name}"
-		
-		# Artist
-		qartist = f" by {query['artist']}"
-		
-		# Subject
-		qsubject = ''
-		subject=None
-		if chosen_subject:
-			subject = chosen_subject
-		else:
-			subject = self.choose_category(list(subjects.keys()), self.categories)
-		if subject:
-			subject_info = subjects[subject]
-			query['subject'] = subject_info['prompt'].lower()
-			if subject == 'Botanical' and qart_form:
-				qart_form = re.sub(r' of an?', ' of a botanical', qart_form)
-			else:
-				qsubject = f" of {subject_info['prompt']}"
-		
-		# Style
-		qstyle = ''
-		style = self.choose_category(list(styles.keys()), self.categories)
-		if style:
-			query['style'] = style
-			qstyle = f" {styles[style]}"
-		
-		# Century
-		qcentury = ''
-		century = self.choose_category(centuries, self.categories)
-		if century:
-			query['century'] = century.lower()
-			qcentury = f" from the {query['century']}"
-		
-		# Form query
-# 		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury} including a description of the subject and style."
-		query['query'] = f"Generate a short description{qart_form}{qartist}{qsubject}{qstyle}{qcentury}."
-		
-		if self.log_level >= 6:
-			print("Query: {}".format(common.make_json(query, pretty_print=True)))
-		elif self.log_level >= 5:
-			print(f"Artist: {query['artist']}")
-			print(f"Categories: {self.categories}")
-			print(f"Query: {query['query']}")
-	
-		return query
-	
-	def get_short_model_name(self, full_name=None):
-		if re.match(r'Stable Diffusion XL 0.9', full_name.re.IGNORECASE):
-			return 'sdxl09'
-		elif re.match(r'Stable Diffusion XL 1.0', full_name.re.IGNORECASE):
-			return 'sdxl10'
-		elif re.match(r'Stable Diffusion XL', full_name.re.IGNORECASE):
-			return 'sdxl'
-		elif re.match(r'Stable Diffusion 1.5', full_name.re.IGNORECASE):
-			return 'sd15'
-		elif re.match(r'Deliberate V2', full_name.re.IGNORECASE):
-			return 'del'
-		elif re.match(r'DreamShaper', full_name.re.IGNORECASE):
-			return 'ds'
-		elif re.match(r'Realistic Vision', full_name.re.IGNORECASE):
-			return 'rv'
-		else:
-			return None
-
-	def get_full_model_name(self, short_name=None):
-		if short_name == 'sdxl09':
-			return "Stable Diffusion XL 0.9"
-		elif short_name == 'sdxl10':
-			return "Stable Diffusion XL 1.0"
-		elif short_name in ['sdxl', 'sd']:
-			return "Stable Diffusion XL Beta"
-		elif short_name == 'sd15':
-			return "Stable Diffusion 1.5"
-		elif short_name == 'del':
-			return "Deliberate V2"
-		elif short_name == 'ds':
-			return "DreamShaper"
-		elif short_name == 'rv':
-			return "Realistic Vision"
-		else:
-			return None
 
 
-
-class Prompt:
+class Genre:
 	"""
-	prompt = visual_artists.Prompt(query)
-	prompt = visual_artists.Prompt(query, log_level=log_level, dry_run=dry_run)
-	prompt = visual_artists.Prompt(query,
+	As defined in https://edsitement.neh.gov/lesson-plans/genre-visual-arts-portraits-pears-and-perfect-landscapes
+	"Still Life, portrait, and landscape are all categories, or genres, of painting..."
+	
+	genre = collective.Genre(artist, data, log_level=log_level, dry_run=dry_run)
+	genre = collective.Genre(artist, {
+			"create_time": "2023-08-16 04:33:32.496440",
+			"update_time": "2023-08-16 04:33:32.496440",
+			
+			"artist_id": "floris_arntzenius",
+			"name": "landscape",
+			"aspect_ratios": [
+				"1:square"
+			],
+			"locations": [
+				"1:Netherlands"
+			],
+			"methods": [
+				"1:watercolor illustration",
+				"1:watercolor painting",
+				"1:oil painting"
+			],
+			"modifiers": [],
+			"styles": [],
+			"subjects": [
+				"1:landscape",
+				"1:portrait"
+			],
+			"time_period": "19th century"
+		},
 		log_level = 5,
 		dry_run = False
 	)
 	"""
-	def __init__(self, query_or_prompt, log_level=5, dry_run=False):
+	def __init__(self, artist, data, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self.dry_run = dry_run
-		self.data = {}
-		
-		if type(query_or_prompt) is str:
-			self.data['prompt'] = query_or_prompt
-		elif type(query_or_prompt) is dict:
-			self.data['query'] = query_or_prompt
-		else:
-			raise TypeError("Invalid query type")
+		self.ui = moses_common.ui.Interface()
+		self.artist = artist
+		self.collective = artist.collective
+		self.data = data
 	
 	@property
 	def log_level(self):
@@ -552,105 +574,195 @@ class Prompt:
 		self._log_level = common.normalize_log_level(value)
 	
 	@property
-	def prompt(self):
-		return self.data.get('prompt')
+	def data(self):
+		return self._data
+	
+	@data.setter
+	def data(self, new_data):
+		self._data = self.check_genre_data(new_data)
 	
 	@property
-	def model(self):
-		if 'query' in self.data:
-			return self.data['query'].get('model', 'del')
-		return 'del'
+	def artist_id(self):
+		return self.data.get('artist_id')
 	
-	def generate(self, openai_api_key=None):
-		if 'prompt' not in self.data:
-			gpt = moses_common.openai.GPT(openai_api_key=openai_api_key, log_level=self.log_level, dry_run=self.dry_run)
-			self.data['prompt'] = gpt.chat(self.data['query']['query'])
-		
-		self._add_resolution()
-		self._improve_prompt()
-		
-		if self.log_level >= 6:
-			print(f"Prompt: {self.data}")
-		return self.data
+	@property
+	def name(self):
+		return self.data.get('name')
 	
-	def _add_resolution(self):
-		if 'prompt' not in self.data:
+	@property
+	def aspect_ratio(self):
+		return self.collective.choose_category(self.data.get('aspect_ratios'))
+	
+	@property
+	def location(self):
+		return self.collective.choose_category(self.data.get('locations'))
+	
+	@property
+	def method(self):
+		return self.collective.choose_category(self.data.get('methods'))
+	
+	@property
+	def methods(self):
+		if 'methods' in self.data and self.data.get('methods'):
+			return self.data.get('methods')
+		return []
+	
+	@property
+	def modifier(self):
+		return self.collective.choose_category(self.data.get('modifiers'))
+	
+	@property
+	def style(self):
+		return self.collective.choose_category(self.data.get('styles'))
+	
+	@property
+	def subject(self):
+		return self.collective.choose_category(self.data.get('subjects'))
+	
+	@property
+	def time_period(self):
+		return self.data.get('time_period')
+	
+	def __str__(self):
+		return f"<moses_common.collective.Genre {self.artist_id} {self.name}>"
+	
+	def __repr__(self):
+		return f"<moses_common.collective.Genre {self.artist_id} {self.name}>"
+	
+	def check_genre_data(self, data):
+		if not data.get('artist_id') or not data.get('name'):
+			return None
+		
+		new_data = {}
+		text_fields = ['artist_id', 'name', 'time_period']
+		for field in text_fields:
+			if field in data and type(data[field]) is str:
+				new_data[field] = data[field].strip()
+		
+		array_fields = ['methods', 'styles', 'subjects', 'modifiers', 'locations', 'aspect_ratios']
+		for field in array_fields:
+			if field in data and type(data[field]) is list:
+				new_array = []
+				for element in data[field]:
+					if self.is_genre_attr(element):
+						new_array.append(element.strip())
+				new_data[field] = new_array
+		return new_data
+	
+	def is_genre_attr(self, value):
+		value = value.strip()
+		if re.match(r'\d+:.*$', value):
+			return True
+		elif re.match(r'\d+:$', value):
+			return True
+		elif re.search(r':', value):
+			return False
+		elif value:
+			return True
+		return False
+	
+	def save(self):
+		genre = None
+		for g in self.artist.genres:
+			if self.name in g.name:
+				genre = g
+				break
+		
+		success = False
+		if genre:
+			# Update
+			self.ui.body(f"Update {self.artist_id}-{self.name}")
+			success = genres_table.update_item(self.data)
+		
+		else:
+			# Insert
+			self.ui.body(f"Insert {self.artist_id}-{self.name}")
+			success = genres_table.put_item(self.data)
+		
+		if not success:
 			return False
 		
-		prompt = self.data['prompt']
-		orientation = 'square'
-		aspect = 'square'
-		# Whole word portrait
-		if prompt and re.search(r'\b(portrait)\b', prompt, re.IGNORECASE):
-			orientation = 'portrait'
-		# Whole word landscape
-		elif prompt and re.search(r'\b(city|coastline|countryside|meadow|seaside|skyline|street scene)\b', prompt, re.IGNORECASE):
-			orientation = 'landscape'
-		# *scape landscape
-		elif prompt and re.search(r'\b(city|cloud|land|moon|river|sea|sky|snow|town|tree|water)scapes?\b', prompt, re.IGNORECASE):
-			orientation = 'landscape'
-		# *polis landscape
-		elif prompt and re.search(r'\b(acro|cosmo|megalo|metro|necro)polis\b', prompt, re.IGNORECASE):
-			orientation = 'landscape'
-		# Whole word full
-		elif prompt and re.search(r'\b(collage|still life)\b', prompt, re.IGNORECASE):
-			orientation = 'landscape'
-			aspect = 'full'
-	
-		width = 768
-		height = 768
-		if orientation == 'landscape':
-			width = 896
-			height = 512
-			if aspect == 'full':
-				width = 640
-			elif aspect == '35':
-				width = 768
-		elif orientation == 'portrait':
-			width = 512
-			height = 640
-			if aspect == '35':
-				height = 768
-			elif aspect == 'hd':
-				height = 896
-		
-		self.data['width'] = width
-		self.data['height'] = height
-		self.data['orientation'] = orientation
-		self.data['aspect'] = aspect
+		self.collective.set_genres_update()
 		return True
 	
-	def _improve_prompt(self):
-		if 'prompt' not in self.data:
+	def delete(self):
+		self.ui.body(f"Delete {self.artist_id}-{self.name}")
+		success = genres_table.delete_item(self.artist_id, self.name)
+		
+		if not success:
 			return False
 		
-		self.data['prompt'] = re.sub(r'^((\w+ ){1,5})on canvas\b', r'\1', self.data['prompt'], re.IGNORECASE)
-		self.data['prompt'] = re.sub(r'((\w+ ){0,5})canvas\b', r'\1painting', self.data['prompt'], re.IGNORECASE)
-	
-		if self.data and 'style' in self.data and self.data['style'] in ['Blizzard', 'Fantasy', 'Hearthstone', 'Mythology', 'Sc-iFi', 'Sci-Fi', 'Star Wars', 'Tolkein', 'Warhammer']:
-			self.data['prompt'] += ' Trending on artstation.'
-		elif re.search(r'\b(blizzard|fantasy|hearthstone|sci\-fi|star wars|tolkein|warhammer)\b', self.data['prompt'], re.IGNORECASE):
-			self.data['prompt'] += ' Trending on artstation.'
-	
-	# 	self.data['prompt'] += " Very coherent, 4k, ultra realistic, ultrafine detailed."
+		self.collective.set_genres_update()
 		return True
 	
-	def get_negative_prompt(self, engine=None):
+	
+	def get_prompt(self):
+		data = {
+			"query": {}
+		}
+		prompt_list = []
+		
+		# Method
+		main = "A painting"
+		method = self.method
+		if method:
+			data['method'] = method
+			if re.match(r'[aeiou]', self.method):
+				main = f"An {self.method}"
+			else:
+				main = f"A {self.method}"
+		
+		# Artist
+		main += f" by {self.artist.name}"
+		prompt_list.append(main)
+		data['query']['artist_name'] = self.artist.name
+		data['query']['artist_id'] = self.artist_id
+		
+		# Subject
+		subject = self.subject
+		if subject:
+			data['query']['subject'] = subject
+			prompt_list.append(subject)
+		
+		# Style
+		style = self.style
+		if style:
+			data['query']['style'] = style
+			prompt_list.append(style)
+		
+		# Modifiers
+		modifier = self.modifier
+		if modifier:
+			data['query']['modifier'] = modifier
+			prompt_list.append(modifier)
+		
+		# Time period
+		if self.time_period:
+			data['query']['time_period'] = self.time_period
+			prompt_list.append(self.time_period)
+		
+		aspect_ratio = self.aspect_ratio
+		data['orientation'] = 'square'
+		data['aspect'] = 'square'
+		if re.search(r'-', aspect_ratio):
+			parts = aspect_ratio.split('-')
+			data['orientation'] = parts[0]
+			data['aspect'] = parts[1]
+		
+		data['negative_prompt'] = self.get_negative_prompt(data)
+		
+		data['prompt'] = ', '.join(prompt_list)
+		return data
+	
+	def get_negative_prompt(self, data):
 		nps = []
-		if engine == 'sinkin':
-			nps.append('nude, nsfw')
-		if 'orientation' in self.data and self.data['orientation'] != 'square':
-			nps.append('duplication artifact')
-		
-		prompt = self.data.get('prompt')
-		if prompt and re.search(r'\b(portrait|person|people|child|children|baby|woman|lady|girl|man|boy)\b', prompt, re.IGNORECASE):
-			nps.append('((((ugly)))), (((duplicate))), ((morbid)), ((mutilated)), out of frame, extra fingers, mutated hands, ((poorly drawn hands)), ((poorly drawn face)), (((mutation))), (((deformed))), ((ugly)), blurry, ((bad anatomy)), (((bad proportions))), ((extra limbs)), cloned face, (((disfigured))), out of frame, ugly, extra limbs, (bad anatomy), gross proportions, (malformed limbs), ((missing arms)), ((missing legs)), (((extra arms))), (((extra legs))), mutated hands, (fused fingers), (too many fingers), (((long neck)))')
-		if prompt and re.search(r'\b(photo|photograph)\b', prompt, re.IGNORECASE):
+		method = data.get('method')
+		if self.name == 'portrait':
+			nps.append('nude, nsfw, extra fingers, mutated hands, ((poorly drawn hands)), (malformed limbs), ((missing arms)), ((missing legs)), (((extra arms))), (((extra legs))), mutated hands, (fused fingers), (too many fingers), (((long neck)))')
+		if method and method == 'photograph':
 			nps.append('illustration, painting, drawing, art, sketch')
-		if prompt and re.search(r'\b(illustration|painting)\b', prompt, re.IGNORECASE):
-			nps.append('3d, concept art')
-		if prompt and re.search(r'\b(canvas|painting)\b', prompt, re.IGNORECASE):
-			nps.append('frame, border, wall, hanging, border, canvas')
-		nps.append('deformed, disfigured, underexposed, overexposed, lowres, error, cropped, worst quality, low quality, jpeg artifacts, out of frame, watermark, signature')
+		if method and re.search(r'\b(illustration|painting)\b', method, re.IGNORECASE):
+			nps.append('3d, concept art, frame, border, wall, hanging, border, canvas')
+		nps.append('lowres, error, cropped, worst quality, low quality, jpeg artifacts, out of frame, watermark, signature')
 		return ', '.join(nps)
 	
