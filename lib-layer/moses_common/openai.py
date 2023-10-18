@@ -85,7 +85,7 @@ class GPT(OpenAI):
 	"""
 	def __init__(self, openai_api_key=None, model=None, log_level=5, dry_run=False):
 		super().__init__(openai_api_key=openai_api_key, log_level=log_level, dry_run=dry_run)
-		self.model = model
+		self.model = model or 'gpt-4'
 		
 	
 	@property
@@ -109,7 +109,7 @@ class GPT(OpenAI):
 	"""
 	gpt.chat(prompt)
 	"""
-	def chat(self, prompt):
+	def chat(self, prompt, strip_newlines=False, strip_double_quotes=False):
 		if self.log_level >= 7:
 			print(f'openai prompt text: "{prompt}"')
 		
@@ -143,9 +143,24 @@ class GPT(OpenAI):
 			return None
 		if self.log_level >= 7:
 			print(completion)
-		answer = re.sub(r'\n+', ' ', answer)
-		answer = re.sub(r'"', '', answer)
+		if strip_newlines:
+			answer = re.sub(r'\n+', ' ', answer)
+		if strip_double_quotes:
+			answer = re.sub(r'"', '', answer)
 		return answer
+	
+	def process_list(self, results):
+		lines = results.splitlines()
+		tags = []
+		for line in lines:
+			line = line.lstrip().rstrip()
+			if not re.match(r'\d+\.', line):
+				continue
+			tag = re.sub(r'\d+\. *', '', line)
+			if re.search(r'"$', tag):
+				tag = re.sub(r'(^"|"$)', '', tag)
+			tags.append(tag)
+		return tags
 
 
 class DALLE(OpenAI):

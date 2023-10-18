@@ -1061,8 +1061,7 @@ def get_dt_now(format=None):
 	return now
 
 def get_dt_past(days=0):
-	tz = datetime.timezone(datetime.timedelta(hours=0))
-	return datetime.datetime.now(tz) - datetime.timedelta(days=days)
+	return get_dt_now() - datetime.timedelta(days=days)
 
 def get_dt_from_epoch(input):
 	epoch = convert_to_int(input)

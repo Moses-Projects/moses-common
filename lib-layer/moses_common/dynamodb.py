@@ -29,15 +29,15 @@ class Table:
 		
 		if not is_valid_name(table_name):
 			raise AttributeError("Invalid table name")
-		self._name = table_name
+		self.name = table_name
 		self._indexes = None
-		self._attributes = None
-		self._partition_key = None
-		self._sort_key = None
+		self.attributes = None
+		self.partition_key = None
+		self.sort_key = None
 		if self.load():
-			self._exists = True
+			self.exists = True
 		else:
-			self._exists = False
+			self.exists = False
 		self.ui = moses_common.ui.Interface()
 		
 	'''
@@ -69,22 +69,22 @@ class Table:
 			TableName = self.name
 		)
 		if common.is_success(response) and 'Table' in response and type(response['Table']) is dict:
-			self._info = response['Table']
+			self.info = response['Table']
 			if 'AttributeDefinitions' in response['Table'] and type(response['Table']['AttributeDefinitions']) is list:
-				self._attributes = {}
+				self.attributes = {}
 				for attribute_info in response['Table']['AttributeDefinitions']:
 					if 'AttributeName' in attribute_info:
-						self._attributes[attribute_info['AttributeName']] = Attribute(self, attribute_info, log_level=self.log_level, dry_run=self.dry_run)
+						self.attributes[attribute_info['AttributeName']] = Attribute(self, attribute_info, log_level=self.log_level, dry_run=self.dry_run)
 				if 'KeySchema' in response['Table'] and type(response['Table']['KeySchema']) is list:
 					for i in range(len(response['Table']['KeySchema'])):
 						key_info = response['Table']['KeySchema'][i]
 						if key_info and type(key_info) is dict:
 							if 'AttributeName' in key_info:
-								self._attributes[key_info['AttributeName']]._info['key_type'] = key_info['KeyType']
+								self.attributes[key_info['AttributeName']].info['key_type'] = key_info['KeyType']
 						if i == 0:
-							self._partition_key = self._attributes[key_info['AttributeName']]
+							self.partition_key = self.attributes[key_info['AttributeName']]
 						if i == 1:
-							self._sort_key = self._attributes[key_info['AttributeName']]
+							self.sort_key = self.attributes[key_info['AttributeName']]
 			if 'GlobalSecondaryIndexes' in response['Table'] and type(response['Table']['GlobalSecondaryIndexes']) is list:
 				self._indexes = {}
 				for index_info in response['Table']['GlobalSecondaryIndexes']:
@@ -102,34 +102,18 @@ class Table:
 		self._log_level = common.normalize_log_level(value)
 	
 	@property
-	def exists(self):
-		return self._exists
-	
-	@property
-	def name(self):
-		return self._name
-	
-	@property
-	def partition_key(self):
-		return self._partition_key
-
-	@property
-	def sort_key(self):
-		return self._sort_key
-	
-	@property
 	def arn(self):
-		if not self._exists and 'TableArn' not in self._info:
+		if not self.exists and 'TableArn' not in self.info:
 			return None
-		return self._info['TableArn']
+		return self.info['TableArn']
 	
 	@property
 	def item_count(self):
-		return self._info['ItemCount']
+		return self.info['ItemCount']
 	
 	@property
 	def indexes(self):
-		if not self._exists or type(self._indexes) is not dict:
+		if not self.exists or type(self._indexes) is not dict:
 			return None
 		return self._indexes
 	
@@ -159,18 +143,6 @@ class Table:
 		else:
 			return int(0)
 		
-	def convert_to_int(self, value, use_none=False):
-		return int(self.convert_to_num(value, use_none=False))
-	
-	def convert_to_pos_int(self, value, use_none=False):
-		number = int(self.convert_to_num(value, use_none=False))
-		if number and number >= 0:
-			return number
-		if use_none:
-			return None
-		else:
-			return int(0)
-	
 	def convert_to_attribute_value(self, value, attribute_type=None):
 		if attribute_type:
 			if attribute_type == 'S':
@@ -232,7 +204,10 @@ class Table:
 		elif 'S' in attribute_value:
 			return str(attribute_value['S'])
 		elif 'N' in attribute_value:
-			return int(attribute_value['N'])
+			if re.search(r'\.', attribute_value['N']):
+				return common.convert_to_float(attribute_value['N'])
+			else:
+				return common.convert_to_int(attribute_value['N'])
 		elif 'M' in attribute_value:
 			new_map = {}
 			for key, item in attribute_value['M'].items():
@@ -263,16 +238,16 @@ class Table:
 	"""
 	def get_item(self, key_value, sort_value=None):
 		key_object = {
-			self._partition_key.name: self.convert_to_attribute_value(key_value, self._partition_key.type)
+			self.partition_key.name: self.convert_to_attribute_value(key_value, self.partition_key.type)
 		}
-		if self._sort_key:
+		if self.sort_key:
 			if sort_value:
-				key_object[self._sort_key.name] = self.convert_to_attribute_value(sort_value, self._sort_key.type)
+				key_object[self.sort_key.name] = self.convert_to_attribute_value(sort_value, self.sort_key.type)
 			else:
-				raise AttributeError("Table '{}' with sort key '{}' requires a sort key value".format(self._name, self._sort_key.name))
+				raise AttributeError("Table '{}' with sort key '{}' requires a sort key value".format(self.name, self.sort_key.name))
 		try:
 			response = boto3_client.get_item(
-				TableName = self._name,
+				TableName = self.name,
 				Key = key_object
 			)
 		except ClientError as e:
@@ -281,23 +256,26 @@ class Table:
 # 			raise ConnectionError("Failed to get item from DynamodDB " + self.name)
 			pass
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
 			if common.is_success(response) and 'Item' in response:
-				return self.convert_from_item(response['Item'])
+				results = self.convert_from_item(response['Item'])
+				if self.log_level >= 7:
+					print("get_item: {}".format(len(results)))
+				return results
+			elif self.log_level >= 7:
+				print("get_item response:", response)
 	
 	"""
 	max_id = table.get_max_range_value(key_value)
 	"""
 	def get_max_range_value(self, key_value):
-		if not self._sort_key:
-			raise AttributeError("Table '{}' does not have a sort key".format(self._name))
-		if self._sort_key.key_type != 'RANGE':
-			raise AttributeError("Table '{}' sort key '{}' is not of type RANGE".format(self._name, self._sort_key.name))
+		if not self.sort_key:
+			raise AttributeError("Table '{}' does not have a sort key".format(self.name))
+		if self.sort_key.key_type != 'RANGE':
+			raise AttributeError("Table '{}' sort key '{}' is not of type RANGE".format(self.name, self.sort_key.name))
 		key_condition = '#partition_key = :key_value'
-		attribute_names = {"#partition_key":self._partition_key.name}
+		attribute_names = {"#partition_key":self.partition_key.name}
 		attribute_values = {":key_value":self.convert_to_attribute_value(key_value)}
-		projection = '{},{}'.format(self._partition_key.name, self._sort_key.name)
+		projection = '{},{}'.format(self.partition_key.name, self.sort_key.name)
 		try:
 			response = boto3_client.query(
 				TableName = self.name,
@@ -315,18 +293,18 @@ class Table:
 			pass
 		else:
 			if self.log_level >= 7:
-				print("response:", response)
+				print("get_max_range_value:", response)
 			if common.is_success(response) and 'Items' in response:
 				records = self.convert_from_item(response['Items'])
-				if len(records) and records[0] and self._sort_key.name in records[0]:
-					return records[0][self._sort_key.name]
+				if len(records) and records[0] and self.sort_key.name in records[0]:
+					return records[0][self.sort_key.name]
 		return int(0)
 	
 	def get_max_limit(self):
 		max_limit = 1000
-		if 'TableSizeBytes' in self._info and 'ItemCount' in self._info:
+		if 'TableSizeBytes' in self.info and 'ItemCount' in self.info:
 			safe_ddb_limit = 1000000 * .75
-			avg_record_size = self._info['TableSizeBytes'] / self._info['ItemCount']
+			avg_record_size = self.info['TableSizeBytes'] / self.info['ItemCount']
 			max_limit = int(safe_ddb_limit / avg_record_size)
 		return round(max_limit, -2)
 	
@@ -339,19 +317,19 @@ class Table:
 			raise AttributeError("args must be dict")
 		
 		key_condition = '#pkey = :pvalue'
-		attribute_names = {"#pkey":self._partition_key.name}
+		attribute_names = {"#pkey":self.partition_key.name}
 		attribute_values = {":pvalue":self.convert_to_attribute_value(partition_key_value)}
 		
-		if 'sort_key_value' in args and self._sort_key:
+		if 'sort_key_value' in args and self.sort_key:
 			sort_key_operator = '='
 			if 'sort_key_operator' in args:
 				sort_key_operator = args['sort_key_operator']
-			attribute_names["#skey"] = self._sort_key.name
+			attribute_names["#skey"] = self.sort_key.name
 			attribute_values[":svalue"] = self.convert_to_attribute_value(args['sort_key_value'])
 			
 			if sort_key_operator == 'between':
 				if 'sort_key_value_end' not in args:
-					raise AttributeError("'between' operator requires sort_key_value_end for table '{}' sort key '{}'".format(self._name, self._sort_key.name))
+					raise AttributeError("'between' operator requires sort_key_value_end for table '{}' sort key '{}'".format(self.name, self.sort_key.name))
 				key_condition += ' AND #skey BETWEEN :svalue AND :svalue2'
 				attribute_values[":svalue2"] = self.convert_to_attribute_value(args['sort_key_value_end'])
 			elif sort_key_operator == 'begins_with':
@@ -361,18 +339,55 @@ class Table:
 		return key_condition, attribute_names, attribute_values
 	
 	"""
-	Same args as query() except limit and offset.
-	update_expression, attribute_names, attribute_values = table.get_update_expression(partition_key_value, args=None)
+	filter_expression, attribute_names, attribute_values = table.get_filter_expression([ {
+		"name": field_name,
+		"operator": "contains",
+		"value": field_value
+	} ])
+	"""
+	def get_filter_expression(self, items=None):
+		if type(items) is str:
+			items = [{
+				"name": self.partition_key.name,
+				"operator": "contains",
+				"value": items
+			}]
+		elif type(items) is dict:
+			items = [items]
+		
+		if type(items) is not list:
+			return '', {}, {}
+		
+		count = 0
+		expression_list = []
+		attribute_names = {}
+		attribute_values = {}
+		for item in items:
+			count += 1
+			attribute_names["#k" + str(count)] = item['name']
+			attribute_values[":v" + str(count)] = self.convert_to_attribute_value(item['value'])
+			operator_function = common.convert_to_snakecase(item['operator'].lower())
+			if operator_function in ['begins_with', 'contains']:
+				expression = "{} (#k{}, :v{})".format(operator_function, str(count), str(count))
+				expression_list.append(expression)
+		filter_expression = ''
+		if len(expression_list):
+			filter_expression = ' and '.join(expression_list)
+		
+		return filter_expression, attribute_names, attribute_values
+	
+	"""
+	update_expression, attribute_names, attribute_values = table.get_update_expression(dict, remove_keys=None)
 	"""
 	def get_update_expression(self, item, remove_keys=None):
 		if item and type(item) is not dict:
 			raise TypeError("item must be dict")
 		
 		# Remove keys from item
-		if self._partition_key.name in item:
-			item.pop(self._partition_key.name)
-		if self._sort_key and self._sort_key.name in item:
-			item.pop(self._sort_key.name)
+		if self.partition_key.name in item:
+			item.pop(self.partition_key.name)
+		if self.sort_key and self.sort_key.name in item:
+			item.pop(self.sort_key.name)
 		
 		count = 0
 		expression_list = []
@@ -425,11 +440,11 @@ class Table:
 		
 		except ClientError as e:
 			print("error:", e)
-			raise ConnectionError("Failed to query table '{}'".format(self._name))
+			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
 			if self.log_level >= 7:
-				print("response:", response)
+				print("query_count:", response)
 			if common.is_success(response) and 'Count' in response:
 				return response['Count']
 				
@@ -451,13 +466,13 @@ class Table:
 		
 		limit = None
 		if 'limit' in args:
-			limit = self.convert_to_int(args['limit'])
+			limit = common.convert_to_int(args['limit'])
 			if limit < 1:
 				limit = None
 		
 		offset = None
 		if 'offset' in args:
-			offset = self.convert_to_int(args['offset']) - 1
+			offset = common.convert_to_int(args['offset']) - 1
 			if offset < 1:
 				offset = None
 			elif limit:
@@ -465,11 +480,11 @@ class Table:
 		
 		if self.log_level >= 7:
 			print("args {}: {}".format(type(args), args))
-			print("self._sort_key.name {}: {}".format(type(self._sort_key.name), self._sort_key.name))
+			print("self.sort_key.name {}: {}".format(type(self.sort_key.name), self.sort_key.name))
 		sort_forward = True
 		if 'order_by' in args and type(args['order_by']) is list:
 			for element in args['order_by']:
-				if 'field' in element and element['field'] == self._sort_key.name:
+				if 'field' in element and element['field'] == self.sort_key.name:
 					if 'order' in element and element['order'] == 'desc':
 						sort_forward = False
 		
@@ -489,11 +504,9 @@ class Table:
 		
 		except ClientError as e:
 			print("error:", e)
-			raise ConnectionError("Failed to query table '{}'".format(self._name))
+			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
 			if common.is_success(response) and 'Items' in response:
 				records = self.convert_from_item(response['Items'])
 				
@@ -504,17 +517,25 @@ class Table:
 				
 				# If no offset, return all records
 				if not offset:
+					if self.log_level >= 7:
+						print(f"query no offset: {count}")
 					return records, count
 				
 				# If offset is too large, return 0 records
 				if offset >= len(records):
+					if self.log_level >= 7:
+						print(f"query big offset: {count}")
 					return [], count
 				
 				# Return subset of records
 				offset_records = []
 				for i in range(offset, len(records)):
 					offset_records.append(records[i])
+				if self.log_level >= 7:
+					print(f"query with offset: {count}")
 				return offset_records, count
+			elif self.log_level >= 7:
+				print("query:", response)
 				
 	
 	"""
@@ -544,7 +565,7 @@ class Table:
 					cnt += 1
 			
 			response = boto3_client.scan(
-				TableName = self._name,
+				TableName = self.name,
 				ProjectionExpression = projection_expression,
 				ExpressionAttributeNames = expression_attribute_names
 			)
@@ -553,14 +574,14 @@ class Table:
 			raise ConnectionError("Failed to scan DynamodDB", self.name)
 		
 		if self.log_level >= 7:
-			print("response:", response)
+			print("get_keys:", response)
 		if not common.is_success(response) or 'Items' not in response:
 			return None
 		
 		items = response['Items']
 		while 'LastEvaluatedKey' in response:
 			response = boto3_client.scan(
-				TableName = self._name,
+				TableName = self.name,
 				ProjectionExpression = projection_expression,
 				ExpressionAttributeNames = expression_attribute_names,
 				ExclusiveStartKey=response['LastEvaluatedKey']
@@ -583,31 +604,60 @@ class Table:
 	
 	"""
 	records = table.scan()
+	records = table.scan(partial_string_to_filter_on_partiion_key)
+	records = table.scan([{
+		"name": field_name,
+		"operator": "contains" | "begins_with",
+		"value": field_value
+	}])
 	"""
-	def scan(self):
+	def scan(self, filters=None):
 		response = {}
 		items = []
+		
+		filter_expression, attribute_names, attribute_values = self.get_filter_expression(filters)
+		
 		try:
-			response = boto3_client.scan(
-				TableName = self._name
-			)
+			if filter_expression:
+				response = boto3_client.scan(
+					TableName = self.name,
+					FilterExpression=filter_expression,
+					ExpressionAttributeNames=attribute_names,
+					ExpressionAttributeValues=attribute_values
+				)
+			else:
+				response = boto3_client.scan(
+					TableName = self.name
+				)
 		except ClientError as e:
 			print("error:", e)
 			raise ConnectionError("Failed to scan DynamodDB", self.name)
 		
-		if self.log_level >= 7:
-			print("response:", response)
 		if not common.is_success(response) or 'Items' not in response:
+			if self.log_level >= 7:
+				print(f"scan {self.name}: no response")
 			return None
 		
 		items = response['Items']
 		while 'LastEvaluatedKey' in response:
-			response = boto3_client.scan(
-				TableName = self._name,
-				ExclusiveStartKey=response['LastEvaluatedKey']
-			)
+			if filter_expression:
+				response = boto3_client.scan(
+					TableName = self.name,
+					ExclusiveStartKey=response['LastEvaluatedKey'],
+					FilterExpression=filter_expression,
+					ExpressionAttributeNames=attribute_names,
+					ExpressionAttributeValues=attribute_values
+				)
+			else:
+				response = boto3_client.scan(
+					TableName = self.name,
+					ExclusiveStartKey=response['LastEvaluatedKey']
+				)
 			items.extend(response['Items'])
-		return self.convert_from_item(items)
+		results = self.convert_from_item(items)
+		if self.log_level >= 7:
+			print("scan {}: {}".format(self.name, len(results)))
+		return results
 	
 	
 	"""
@@ -617,19 +667,19 @@ class Table:
 		if type(item) is not dict:
 			raise TypeError("item must be a dict")
 			return
-		if self._partition_key.name not in item:
-			print("Update item is missing partition key for table", self._name)
+		if self.partition_key.name not in item:
+			print("Update item is missing partition key for table", self.name)
 			return
 		
-		partition_key_value = item[self._partition_key.name]
+		partition_key_value = item[self.partition_key.name]
 		key_object = {
-			self._partition_key.name: self.convert_to_attribute_value(item[self._partition_key.name], self._partition_key.type)
+			self.partition_key.name: self.convert_to_attribute_value(item[self.partition_key.name], self.partition_key.type)
 		}
-		if self._sort_key:
-			if self._sort_key.name not in item:
-				print("Update item is missing sort key for table", self._name)
+		if self.sort_key:
+			if self.sort_key.name not in item:
+				print("Update item is missing sort key for table", self.name)
 				return
-			key_object[self._sort_key.name] = self.convert_to_attribute_value(item[self._sort_key.name], self._sort_key.type)
+			key_object[self.sort_key.name] = self.convert_to_attribute_value(item[self.sort_key.name], self.sort_key.type)
 		
 		update_expression, attribute_names, attribute_values = self.get_update_expression(item, remove_keys)
 		if update_expression and type(update_expression) == type(True):
@@ -647,7 +697,7 @@ class Table:
 			return True
 		try:
 			response = boto3_client.update_item(
-				TableName = self._name,
+				TableName = self.name,
 				Key = key_object,
 				UpdateExpression = update_expression,
 				ExpressionAttributeNames = attribute_names,
@@ -677,7 +727,7 @@ class Table:
 			return True
 		try:
 			response = boto3_client.put_item(
-				TableName = self._name,
+				TableName = self.name,
 				Item = self.convert_to_item(item)
 			)
 		except ClientError as e:
@@ -711,7 +761,7 @@ class Table:
 			return True
 		try:
 			response = boto3_client.delete_item(
-				TableName = self._name,
+				TableName = self.name,
 				Key = key_hash
 			)
 		except ClientError as e:
@@ -740,15 +790,15 @@ class Index:
 			raise AttributeError("Invalid index args")
 		if 'IndexName' not in args:
 			raise AttributeError("IndexName is required in args")
-		self._name = args['IndexName']
-		self._table = table
-		self._partition_key = None
-		self._sort_key = None
-		self._info = None
+		self.name = args['IndexName']
+		self.table = table
+		self.partition_key = None
+		self.sort_key = None
+		self.info = None
 		if self.load(args):
-			self._exists = True
+			self.exists = True
 		else:
-			self._exists = False
+			self.exists = False
 		self.ui = moses_common.ui.Interface()
 	
 	'''
@@ -772,15 +822,15 @@ class Index:
 	}
 	'''
 	def load(self, args):
-		self._info = args
+		self.info = args
 		if 'KeySchema' in args and type(args['KeySchema']) is list:
 			for i in range(len(args['KeySchema'])):
 				key_info = args['KeySchema'][i]
 				if key_info and type(key_info) is dict and 'AttributeName' in key_info:
 					if i == 0:
-						self._partition_key = self._table._attributes[key_info['AttributeName']]
+						self.partition_key = self.table.attributes[key_info['AttributeName']]
 					if i == 1:
-						self._sort_key = self._table._attributes[key_info['AttributeName']]
+						self.sort_key = self.table.attributes[key_info['AttributeName']]
 			return True
 		return False
 	
@@ -793,18 +843,10 @@ class Index:
 		self._log_level = common.normalize_log_level(value)
 	
 	@property
-	def exists(self):
-		return self._exists
-	
-	@property
-	def name(self):
-		return self._name
-	
-	@property
 	def arn(self):
-		if not self._exists and 'IndexArn' not in self._info:
+		if not self.exists and 'IndexArn' not in self.info:
 			return None
-		return self._info['IndexArn']
+		return self.info['IndexArn']
 	
 	"""
 	Same args as query() except limit and offset.
@@ -815,21 +857,21 @@ class Index:
 			raise AttributeError("args must be dict")
 		
 		key_condition = '#pkey = :pvalue'
-		attribute_names = {"#pkey":self._partition_key.name}
-		attribute_values = {":pvalue":self._table.convert_to_attribute_value(partition_key_value)}
+		attribute_names = {"#pkey":self.partition_key.name}
+		attribute_values = {":pvalue":self.table.convert_to_attribute_value(partition_key_value)}
 		
-		if 'sort_key_value' in args and self._sort_key:
+		if 'sort_key_value' in args and self.sort_key:
 			sort_key_operator = '='
 			if 'sort_key_operator' in args:
 				sort_key_operator = args['sort_key_operator']
-			attribute_names["#skey"] = self._sort_key.name
-			attribute_values[":svalue"] = self._table.convert_to_attribute_value(args['sort_key_value'])
+			attribute_names["#skey"] = self.sort_key.name
+			attribute_values[":svalue"] = self.table.convert_to_attribute_value(args['sort_key_value'])
 			
 			if sort_key_operator == 'between':
 				if 'sort_key_value_end' not in args:
-					raise AttributeError("'between' operator requires sort_key_value_end for table '{}' sort key '{}'".format(self._name, self._sort_key.name))
+					raise AttributeError("'between' operator requires sort_key_value_end for table '{}' sort key '{}'".format(self.name, self.sort_key.name))
 				key_condition += ' AND #skey BETWEEN :svalue AND :svalue2'
-				attribute_values[":svalue2"] = self._table.convert_to_attribute_value(args['sort_key_value_end'])
+				attribute_values[":svalue2"] = self.table.convert_to_attribute_value(args['sort_key_value_end'])
 			elif sort_key_operator == 'begins_with':
 				key_condition += ' AND begins_with (#skey, :svalue)'
 			else:
@@ -857,7 +899,7 @@ class Index:
 		
 		except ClientError as e:
 			print("error:", e)
-			raise ConnectionError("Failed to query table '{}'".format(self._name))
+			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
 			if self.log_level >= 7:
@@ -883,24 +925,24 @@ class Index:
 		
 		limit = None
 		if 'limit' in args:
-			limit = self._table.convert_to_int(args['limit'])
+			limit = common.convert_to_int(args['limit'])
 			if limit < 1:
 				limit = None
 		
 		offset = None
 		if 'offset' in args:
-			offset = self._table.convert_to_int(args['offset']) - 1
+			offset = common.convert_to_int(args['offset']) - 1
 			if offset < 1:
 				offset = None
 			elif limit:
 				limit += offset
 		
 		if not limit:
-			limit = self._table.get_max_limit()
+			limit = self.table.get_max_limit()
 		
 		try:
 			response = boto3_client.query(
-				TableName = self._table.name,
+				TableName = self.table.name,
 				IndexName = self.name,
 				Select = 'ALL_ATTRIBUTES',
 				KeyConditionExpression = key_condition,
@@ -911,13 +953,13 @@ class Index:
 		
 		except ClientError as e:
 			print("error:", e)
-			raise ConnectionError("Failed to query table '{}'".format(self._name))
+			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
 			if self.log_level >= 7:
 				print("response:", response)
 			if common.is_success(response) and 'Items' in response:
-				records = self._table.convert_from_item(response['Items'])
+				records = self.table.convert_from_item(response['Items'])
 				
 				# Get count
 				count = len(records)
@@ -953,9 +995,9 @@ class Attribute:
 			raise AttributeError("Invalid attribute args")
 		if 'AttributeName' not in args:
 			raise AttributeError("AttributeName is required in args")
-		self._name = args['AttributeName']
-		self._info = args
-		self._exists = True
+		self.name = args['AttributeName']
+		self.info = args
+		self.exists = True
 		self.ui = moses_common.ui.Interface()
 	
 	'''
@@ -974,23 +1016,15 @@ class Attribute:
 		self._log_level = common.normalize_log_level(value)
 	
 	@property
-	def exists(self):
-		return self._exists
-	
-	@property
-	def name(self):
-		return self._name
-	
-	@property
 	def type(self):
-		if not self._exists and 'AttributeType' not in self._info:
+		if not self.exists and 'AttributeType' not in self.info:
 			return None
-		return self._info['AttributeType']
+		return self.info['AttributeType']
 	
 	@property
 	def key_type(self):
-		if not self._exists and 'key_type' not in self._info:
+		if not self.exists and 'key_type' not in self.info:
 			return None
-		return self._info['key_type']
+		return self.info['key_type']
 	
 

@@ -142,53 +142,75 @@ class StableDiffusion(StabilityAI):
 			return "Stable Diffusion XL 1.0"
 		return "Stable Diffusion XL"
 	
-	def get_resolution(self, orientation=None, aspect=None):
-		if not orientation:
-			orientation = 'square'
-		if not aspect:
-			aspect = 'square'
-		width = 512
-		height = 512
+	def get_resolution(self, ar=None):
+		if not ar:
+			ar = 1.0
+		ar = common.convert_to_float(ar)
+		width = 1024
+		height = 1024
 		
 		if self.name in ['sd15', 'sdxl']:
-			width = 512
-			height = 512
-			if orientation == 'landscape':
+			if ar >= 1.625:
 				width = 896
-				if aspect == 'full':
-					width = 640
-				elif aspect == '35':
-					width = 768
-			elif orientation == 'portrait':
+				height = 512
+			elif ar >= 1.415:
+				width = 768
+				height = 512
+			elif ar >= 1.29:
+				width = 683
+				height = 512
+			elif ar >= 1.125:
+				width = 640
+				height = 512
+			
+			elif ar >= 0.9:
+				width = 512
+				height = 512
+			
+			elif ar >= 0.775:
+				width = 512
 				height = 640
-				if aspect == '35':
-					height = 768
-				elif aspect == 'hd':
-					height = 896
+			elif ar >= 0.71:
+				width = 512
+				height = 683
+			elif ar >= 0.62:
+				width = 512
+				height = 768
+			else:
+				width = 640
+				height = 896
 		
 		else:
-			width = 1024
-			height = 1024
-			if orientation == 'landscape':
+			if ar >= 2.075:
+				width = 1536
+				height = 640
+			elif ar >= 1.605:
 				width = 1344
 				height = 768
-				if aspect == 'full':
-					width = 1152
-					height = 896
-				elif aspect == '35':
-					width = 1216
-					height = 832
-			elif orientation == 'portrait':
+			elif ar >= 1.375:
+				width = 1216
+				height = 832
+			elif ar >= 1.145:
+				width = 1152
+				height = 896
+			
+			elif ar >= 0.89:
+				width = 1024
+				height = 1024
+			
+			elif ar >= 0.73:
 				width = 896
 				height = 1152
-				if aspect == '35':
-					width = 832
-					height = 1216
-				elif aspect == 'hd':
-					width = 768
-					height = 1344
-		
-		return orientation, aspect, width, height
+			elif ar >= 0.625:
+				width = 832
+				height = 1216
+			elif ar >= 0.495:
+				width = 768
+				height = 1344
+			else:
+				width = 640
+				height = 1536
+		return ar, width, height
 	
 	"""
 	stable_diffusion.text_to_image(prompt)
@@ -203,16 +225,18 @@ class StableDiffusion(StabilityAI):
 		aspect='square' || 'full' || '35' || 'hd'
 	)
 	
-			ratio	sdxl10		sdxlbeta	sd20
-	ultra	21:9	1536x640							2.4
-	ultra	2:1								1024x512	2.0
-			1.85:1							947x512		1.85
-	hd		16:9	1344x768				910x512		1.78
-	hd		7:4					896x512		896x512		1.75
-	35		3:2		1216x832	768x512		768x512		1.5
-			4:3					683x512		683x512		1.33
-	full	5:4		1152x896	640x512		640x512		1.25
-	square	1:1		1024x1024	512x512		512x512		1
+			~ratio	sdxl10		sdxlbeta	sd20
+	ultra	21:9	1536x640							2.40	0.42
+	ultra	2:1								1024x512	2.00	0.50
+			1.85:1							947x512		1.85	0.54
+	hd		16:9							910x512		1.78	0.56
+	hd		7:4		1344x768	896x512		896x512		1.75	0.57
+	35		3:2					768x512		768x512		1.50	0.67
+	35		3:2		1216x832							1.46	0.68
+			4:3					683x512		683x512		1.33	0.75
+	full	5:4		1152x896							1.29	0.78
+	full	5:4					640x512		640x512		1.25	0.80
+	square	1:1		1024x1024	512x512		512x512		1		1
 	
 	"""
 	def text_to_image(self,
@@ -226,6 +250,7 @@ class StableDiffusion(StabilityAI):
 		filename_suffix=None,
 		return_args=False,
 		
+		aspect_ratio=None,
 		orientation=None,
 		aspect=None
 	):
@@ -261,7 +286,7 @@ class StableDiffusion(StabilityAI):
 				data['cfg_scale'] = common.convert_to_float(cfg_scale)
 			
 			# Resolution
-			data['orientation'], data['aspect'], data['width'], data['height'] = self.get_resolution(orientation, aspect)
+			data['aspect_ratio'], data['width'], data['height'] = self.get_resolution(aspect_ratio)
 			
 			# Filename
 			if not data['filename']:
@@ -273,10 +298,10 @@ class StableDiffusion(StabilityAI):
 					qfilename_prefix = filename_prefix + '-'
 				
 				qfilename_suffix = ''
-				if data['orientation'] != 'square':
-					qfilename_suffix = '-' + data['orientation']
-				if data['aspect'] != 'square':
-					qfilename_suffix += '-' + data['aspect']
+# 				if data['orientation'] != 'square':
+# 					qfilename_suffix = '-' + data['orientation']
+# 				if data['aspect'] != 'square':
+# 					qfilename_suffix += '-' + data['aspect']
 				
 				if filename_suffix:
 					qfilename_suffix = '-' + filename_suffix
