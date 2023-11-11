@@ -82,7 +82,6 @@ class Interface:
 	})
 	"""
 	def get_options(self, params={}):
-		
 		# Prep options
 		short_opts = ""
 		long_opts = []

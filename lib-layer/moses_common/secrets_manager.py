@@ -1,18 +1,31 @@
 # print("Loaded Secrets Manager module")
 
-import moses_common.__init__ as common
 import base64
 import json
 from botocore.exceptions import ClientError
 from boto3 import client as boto3_client
+
+import moses_common.__init__ as common
+import moses_common.ui
 
 class Secrets:
 	"""
 	import moses_common.secrets_manager
 	secrets = moses_common.secrets_manager.Secrets()
 	"""
-	def __init__(self):
+	def __init__(self, log_level=5, dry_run=False):
+		self.dry_run = dry_run
+		self.log_level = log_level
+		self.ui = cg_shared.ui.Interface()
 		self.client = boto3_client('secretsmanager', region_name="us-west-2")
+	
+	@property
+	def log_level(self):
+		return self._log_level
+	
+	@log_level.setter
+	def log_level(self, value):
+		self._log_level = common.normalize_log_level(value)
 	
 	"""
 	secret = secrets.get(secret_name)
@@ -67,7 +80,10 @@ class Secret:
 	import moses_common.secrets_manager
 	secret = moses_common.secrets_manager.Secret(secret_name)
 	"""
-	def __init__(self, secret_name):
+	def __init__(self, secret_name, log_level=5, dry_run=False):
+		self.dry_run = dry_run
+		self.log_level = log_level
+		self.ui = cg_shared.ui.Interface()
 		self.client = boto3_client('secretsmanager', region_name="us-west-2")
 		self.name = secret_name
 		self.info = self.load()
@@ -75,6 +91,14 @@ class Secret:
 			self.exists = True
 		else:
 			self.exists = False
+	
+	@property
+	def log_level(self):
+		return self._log_level
+	
+	@log_level.setter
+	def log_level(self, value):
+		self._log_level = common.normalize_log_level(value)
 	
 	"""
 	secret_info = secret.load()
@@ -111,7 +135,7 @@ class Secret:
 	"""
 	def get_value(self):
 		if not self.exists:
-			return False
+			return None
 		response = self.client.get_secret_value(
 			SecretId = self.name
 		)
@@ -174,6 +198,11 @@ class Secret:
 		if 'description' in args:
 			description = args['description']
 		
+		if self.dry_run:
+			self.ui.dry_run(f"create_secret('{self.name}', '{secret_string}')")
+			self.exists = True
+			return True
+		
 		response = self.client.create_secret(
 			Name = self.name,
 			Description = description,
@@ -197,6 +226,11 @@ class Secret:
 		
 		secret_string = json.dumps(value)
 		
+		if self.dry_run:
+			self.ui.dry_run(f"put_secret_value('{self.name}', '{secret_string}')")
+			self.exists = True
+			return True
+		
 		response = self.client.put_secret_value(
 			SecretId = self.get_arn(),
 			SecretString = secret_string
@@ -211,6 +245,12 @@ class Secret:
 	response = secret.delete()
 	"""
 	def delete(self):
+		if self.dry_run:
+			self.ui.dry_run(f"delete_secret('{self.name}')")
+			self.info = False
+			self.exists = False
+			return True
+		
 		response = self.client.delete_secret(
 			SecretId = self.get_arn(),
 			ForceDeleteWithoutRecovery = True

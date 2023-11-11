@@ -116,9 +116,17 @@ class Object:
 		if self.dry_run:
 			self.ui.dry_run(f"s3.upload_fileobj('{self.bucket.name}', '{self.object_name}')")
 			return True
-		response = self.client.upload_fileobj(
-			io.BytesIO(content),
-			self.bucket.name,
-			self.object_name
-		)
+		if type(content) is str:
+		    response = self.client.put_object(
+				Body=content,
+				Bucket=self.bucket.name,
+				Key=self.object_name
+			)
+		else:
+			response = self.client.upload_fileobj(
+				io.BytesIO(content),
+				self.bucket.name,
+				self.object_name
+			)
+		return True
 	

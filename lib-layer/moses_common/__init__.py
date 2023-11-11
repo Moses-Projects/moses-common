@@ -319,20 +319,21 @@ data = common.read_file(filename)
 For CSVs:
 data = common.read_file(filename, delimiter=',', mapping=dict)
 """
-def read_file(filepath, delimiter=None, mapping=None, file_checked=False):
+def read_file(filepath, delimiter=None, mapping=None, file_checked=False, convert=True):
 	if not file_checked:
 		filepath = os.path.expanduser(filepath)
 		if not os.path.isfile(filepath):
 			return None
-	if re.search(r'\.csv$', filepath, re.IGNORECASE):
+	if re.search(r'\.csv$', filepath, re.IGNORECASE) and not convert:
 		return read_csv(filepath, delimiter=delimiter, mapping=mapping)
 	else:
 		file = open(filepath, 'r')
 		contents = file.read()
 		file.close()
-		contents = convert_value(contents)
-		if mapping and type(mapping) is dict and type(contents) in [dict, list]:
-			return map_csv(contents, mapping)
+		if convert:
+			contents = convert_value(contents)
+			if mapping and type(mapping) is dict and type(contents) in [dict, list]:
+				return map_csv(contents, mapping)
 		return contents
 
 """
@@ -444,7 +445,7 @@ new_records = common.map_csv(records, {
 	"field": "csv_field_name",
 	"field": { "name": "csv_field_name" },
 	"field": { "name": "csv_field_name", "type": "str", "transforms": ['lower', 'remove_extra_spaces'] },
-	"field": { "name": "csv_field_name", "type": "int", "multiple": 100 },
+	"field": { "name": "csv_field_name", "type": "int", "multiplier": 100 },
 	"field": { "name": "csv_field_name", "type": "float" },
 	"field": { "name": "csv_field_name", "type": "bool", "true": ['yes', 'y'] },
 	"field": { "type": "literal", "value": "value_of_any_type" }
@@ -454,11 +455,14 @@ def map_csv(records, mapping):
 	new_records = []
 	for record in records:
 		new_record = _map_csv_record(record, mapping)
-		new_records.append(new_record)
+		if new_record:
+			new_records.append(new_record)
 	return new_records
 
 _map_csv_last_record = {}
 def _map_csv_record(record, mapping):
+	if type(record) is not dict:
+		raise TypeError("_map_csv_record() record must be type dict. It is {}.".format(type(record)))
 	global _map_csv_last_record
 	
 	new_record = {}
@@ -759,18 +763,44 @@ def flatten_hash(input, upper_key=None, inner_key=None):
 
 
 ## List handling
+"""
+Converts what it can into a list. "unique=True" makes output list unique.
 
-def to_list(input, key):
+list = to_list(str or int or float or bool)
+	[str or int or float or bool]
+list = to_list(input_list)
+	input_list
+list = to_list(hash)
+	[value1, value2, ...]
+list = to_list(list_of_hashes, key)
+	[hash1_key_value, hash2_key_value, ...]
+list = to_list(hash_of_hashes, key)
+	[hash1_key_value, hash2_key_value, ...]
+"""
+def to_list(input=None, key=None, unique=False):
 	output = []
-	if type(input) is list:
-		for item in input:
-			if type(item) is dict and key in item:
-				output.append(item[key])
-	if type(input) is dict:
-		for k, item in input.items():
-			if type(item) is dict and key in item:
-				output.append(item[key])
+	if key:
+		if type(input) is list:
+			for item in input:
+				if type(item) is dict and key in item:
+					output.append(item[key])
+		if type(input) is dict:
+			if key:
+				for k, item in input.items():
+					if type(item) is dict and key in item:
+						output.append(item[key])
+			else:
+				output = list(input.values())
+	elif type(input) is str or type(input) is int or type(input) is float:
+		output = [input]
+	elif type(input) is list:
+		output = input
+	if unique:
+		return unique_list(output)
 	return output
+
+def unique_list(full_list):
+	return list(dict.fromkeys(full_list))
 
 def combine_lists_of_hashes(lists, key_list):
 	if len(lists) != len(key_list):
@@ -1039,19 +1069,6 @@ def get_datetime_from_string(input):
 			return dt
 	return None
 
-"""
-date_string = common.get_date_string(string_or_datetime)
-"""
-def get_date_string(input):
-	if type(input) is str:
-		input = datetime.datetime.fromisoformat(input)
-	if not is_datetime(input):
-		return input
-	month = input.strftime("%b")
-	day = str(input.day)
-	year = input.strftime("%Y")
-	return f"{month} {day}, {year}"
-
 def get_dt_now(format=None):
 	if format == 'date':
 		return datetime.date.today()
@@ -1061,11 +1078,31 @@ def get_dt_now(format=None):
 	return now
 
 def get_dt_past(days=0):
-	return get_dt_now() - datetime.timedelta(days=days)
+	tz = datetime.timezone(datetime.timedelta(hours=0))
+	return datetime.datetime.now(tz) - datetime.timedelta(days=days)
 
 def get_dt_from_epoch(input):
 	epoch = convert_to_int(input)
 	return datetime.datetime.fromtimestamp(epoch)
+
+
+"""
+date_string = common.get_date_string(string_or_datetime)
+date_string = common.get_date_string()
+"""
+def get_date_string(input=None):
+	if input is None:
+		input = get_dt_now()
+	elif type(input) is str:
+		input = datetime.datetime.fromisoformat(input)
+	if not is_datetime(input):
+		return input
+	month = input.strftime("%b")
+	day = str(input.day)
+	year = input.strftime("%Y")
+	return f"{month} {day}, {year}"
+
+
 
 def get_epoch(dt=None):
 	if dt:
