@@ -29,11 +29,11 @@ class Table:
 		
 		if not is_valid_name(table_name):
 			raise AttributeError("Invalid table name")
-		self._name = table_name
+		self.name = table_name
 		self._indexes = None
-		self._attributes = None
-		self._partition_key = None
-		self._sort_key = None
+		self.attributes = None
+		self.partition_key = None
+		self.sort_key = None
 		if self.load():
 			self.exists = True
 		else:

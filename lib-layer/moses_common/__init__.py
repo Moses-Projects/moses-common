@@ -1087,6 +1087,19 @@ def get_dt_from_epoch(input):
 
 
 """
+datetime_string = common.get_datetime_string(string_or_datetime)
+datetime_string = common.get_datetime_string()
+"""
+def get_datetime_string(input=None):
+	if input is None:
+		input = get_dt_now()
+	elif type(input) is str:
+		input = convert_string_to_datetime(input)
+	if not is_datetime(input):
+		return input
+	return convert_datetime_to_string(input)
+
+"""
 date_string = common.get_date_string(string_or_datetime)
 date_string = common.get_date_string()
 """
