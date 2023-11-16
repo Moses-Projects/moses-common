@@ -2,6 +2,7 @@
 
 import base64
 from charset_normalizer import from_bytes
+import collections.abc
 import csv
 import datetime
 import gzip
@@ -794,6 +795,14 @@ def flatten_hash(input, upper_key=None, inner_key=None):
 			output[new_key] = value
 	return output
 
+def update_hash(d, u):
+	for k, v in u.items():
+		if isinstance(v, collections.abc.Mapping):
+			d[k] = update_hash(d.get(k, {}), v)
+		else:
+			d[k] = v
+	return d
+
 
 ## List handling
 """
@@ -849,7 +858,7 @@ def combine_lists_of_hashes(lists, key_list):
 			sub_key = key_list[i]
 			for item in sub_list:
 				if element[main_key] == item[sub_key]:
-					element.update(item)
+					update_hash(element, item)
 		new_list.append(element)
 	return new_list
 
