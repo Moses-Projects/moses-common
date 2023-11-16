@@ -1,8 +1,10 @@
 # print("Loaded APIs init")
 
 import base64
+from charset_normalizer import from_bytes
 import csv
 import datetime
+import gzip
 import json
 import math
 import os
@@ -99,7 +101,7 @@ def get_url(url, args={}, debug=False, dry_run=False):
 		print("Unexpected error:", sys.exc_info()[0])
 		raise
 	else:
-		return 200, convert_value(response.decode('UTF-8'))
+		return 200, convert_value(response)
 
 def download_url(url, filepath):
 	# Download and save the image to a file
@@ -126,6 +128,9 @@ def get_oauth2_token(url, key, secret):
 
 def url_encode(hash):
 	return urllib.parse.urlencode(hash)
+
+def url_decode(query_string):
+	return urllib.parse.parse_qs(query_string)
 
 ## File formats
 
@@ -154,6 +159,29 @@ def parse_base64(base64_string):
 		return base64_string
 	return base64_string
 
+
+"""
+boolean = common.is_gzip(gzip_bytes)
+"""
+def is_gzip(gzip_bytes):
+	if type(gzip_bytes) is not bytes:
+		return False
+	if gzip_bytes[0:2] == b'\x1f\x8b':
+		return True
+	return False
+
+"""
+output = common.decompress_gzip(gzip_bytes)
+"""
+def decompress_gzip(gzip_bytes):
+	if not is_gzip(gzip_bytes):
+		return None
+	try:
+		output = gzip.decompress(gzip_bytes)
+	except ValueError as e:
+		print(e)
+		return None
+	return output
 
 """
 boolean = common.is_json(json_string)
@@ -261,6 +289,11 @@ value_object = common.convert_value(value_string)
   Recognizes and converts Base64, JSON, XML, and YAML into a Python object.
 """
 def convert_value(input_string):
+	if is_gzip(input_string):
+		input_string = decompress_gzip(input_string)
+	if type(input_string) is bytes:
+		input_string = str(from_bytes(input_string).best())
+	
 	if type(input_string) is not str:
 		return input_string
 # 	print("input_string {}: {}".format(type(input_string), input_string))
@@ -837,7 +870,8 @@ Checks for a datetime datetime object.
 boolean = common.is_datetime(input)
 """
 def is_datetime(input):
-	if type(input) is type(datetime.datetime.utcnow()):
+	tz = datetime.timezone(datetime.timedelta(hours=0))
+	if type(input) is type(datetime.datetime.now(tz)):
 		return True
 	return False
 
@@ -855,7 +889,8 @@ Checks for a datetime time object.
 boolean = common.is_time(input)
 """
 def is_time(input):
-	now = datetime.datetime.utcnow()
+	tz = datetime.timezone(datetime.timedelta(hours=0))
+	now = datetime.datetime.now(tz)
 	if type(input) is type(now.time()):
 		return True
 	return False
@@ -1060,19 +1095,20 @@ def is_uuid(input):
 
 ## Date/time formatting
 
-def get_datetime_from_string(input):
-	if is_datetime(input):
-		return input
-	if type(input) is str:
-		dt = datetime.datetime.fromisoformat(input)
-		if dt:
-			return dt
-	return None
+# def get_datetime_from_string(input):
+# 	if is_datetime(input):
+# 		return input
+# 	if type(input) is str:
+# 		dt = datetime.datetime.fromisoformat(input)
+# 		if dt:
+# 			return dt
+# 	return None
 
 def get_dt_now(format=None):
 	if format == 'date':
 		return datetime.date.today()
-	now = datetime.datetime.utcnow()
+	tz = datetime.timezone(datetime.timedelta(hours=0))
+	now = datetime.datetime.now(tz)
 	if format == 'time':
 		return now.time()
 	return now
@@ -1119,13 +1155,16 @@ def get_date_string(input=None):
 
 def get_epoch(dt=None):
 	if dt:
-		dt = get_datetime_from_string(dt)
+		dt = convert_string_to_datetime(dt)
 	else:	
 		dt = get_dt_now()
 	return int(dt.timestamp())
 
-def get_epoch_ms():
-	dt = get_dt_now()
+def get_epoch_ms(dt=None):
+	if dt:
+		dt = convert_string_to_datetime(dt)
+	else:	
+		dt = get_dt_now()
 	return int(dt.timestamp() * 1000)
 
 

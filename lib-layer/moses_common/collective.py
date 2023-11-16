@@ -7,10 +7,9 @@ import re
 import requests
 import urllib
 
-from duckduckgo_search import DDGS
-
 import moses_common.__init__ as common
 import moses_common.dynamodb
+import moses_common.google_search
 import moses_common.openai
 import moses_common.ui
 
@@ -30,11 +29,14 @@ class Collective:
 	collective = collective.Collective()
 	collective = collective.Collective(log_level=log_level, dry_run=dry_run)
 	collective = collective.Collective(
+		google_search_api_key = "xxx",
+		google_search_project_cx = "xxx",
+		openai_api_key = "xxx",
 		log_level = 5,
 		dry_run = False
 	)
 	"""
-	def __init__(self, openai_api_key=None, log_level=5, dry_run=False):
+	def __init__(self, google_search_api_key=None, google_search_project_cx=None, openai_api_key=None, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self.dry_run = dry_run
 		self.ui = moses_common.ui.Interface()
@@ -50,8 +52,10 @@ class Collective:
 		genres_table.log_level = log_level
 		
 		self.gpt = None
-		if openai_api_key:
-			self.gpt = moses_common.openai.GPT(openai_api_key=openai_api_key, log_level=self.log_level, dry_run=self.dry_run)
+		self.openai_api_key = openai_api_key
+		self.google_image_search = None
+		self.google_search_api_key = google_search_api_key
+		self.google_search_project_cx = google_search_project_cx
 	
 	
 	@property
@@ -140,7 +144,7 @@ class Collective:
 		print("checking last artists update")
 		
 		record = settings_table.get_item('artists_last_update')
-		dt = common.get_datetime_from_string(record['value'])
+		dt = common.convert_string_to_datetime(record['value'])
 		if self.artists_last_update and self.artists_last_update < dt:
 			return True
 		return False
@@ -160,7 +164,7 @@ class Collective:
 		print("checking last genres update")
 		
 		record = settings_table.get_item('genres_last_update')
-		dt = common.get_datetime_from_string(record['value'])
+		dt = common.convert_string_to_datetime(record['value'])
 		if self.genres_last_update and self.genres_last_update < dt:
 			return True
 		return False
@@ -184,7 +188,7 @@ class Collective:
 		
 		record = settings_table.get_item('images_last_update')
 		print("record {}: {}".format(type(record), record))
-		dt = common.get_datetime_from_string(record['value'])
+		dt = common.convert_string_to_datetime(record['value'])
 		if self.images_last_update and self.images_last_update < dt:
 			return True
 		return False
@@ -604,27 +608,9 @@ class Artist:
 	def get_search_results(self, limit=8):
 		keywords = 'artwork by ' + self.name
 		
-		results_list = []
-		with DDGS() as ddgs:
-			ddgs_images_gen = ddgs.images(
-				keywords,
-				region="us-en",
-				safesearch="Off",
-				size=None,
-				type_image=None,
-				layout=None,
-				license_image=None,
-			)
-			cnt = 0
-			for r in ddgs_images_gen:
-				if cnt >= limit:
-					break
-				if re.search(r'\.explicit\.bing', r['thumbnail']):
-					continue
-				results_list.append(r)
-				cnt += 1
-			return results_list
-		return None
+		if not self.collective.google_image_search:
+			self.collective.google_image_search = moses_common.google_search.ImageSearch(api_key=self.collective.google_search_api_key, project_cx=self.collective.google_search_project_cx, log_level=self.log_level, dry_run=self.dry_run)
+		return self.collective.google_image_search.search(keywords, limit=limit)
 	
 	def save(self):
 		success = False
@@ -812,6 +798,8 @@ class Genre:
 # 			print("prompt {}: {}".format(type(prompt), prompt))
 			if not tags:
 				# Generate new tags
+				if not self.collective.gpt:
+					self.collective.gpt = moses_common.openai.GPT(openai_api_key=self.collective.openai_api_key, log_level=self.log_level, dry_run=self.dry_run)
 				results = self.collective.gpt.chat(prompt)
 				tags = self.collective.gpt.process_list(results)
 			
@@ -845,7 +833,7 @@ class Genre:
 			results = self.artist.get_search_results(20)
 			ratios = []
 			for result in results:
-				ratio = common.round_half_up(common.convert_to_int(result['width']) / common.convert_to_int(result['height']), 2)
+				ratio = common.round_half_up(common.convert_to_int(result['image']['width']) / common.convert_to_int(result['image']['height']), 2)
 				ratios.append(ratio)
 			self.data['aspect_ratios'] = ratios
 			success = genres_table.put_item(self.data)

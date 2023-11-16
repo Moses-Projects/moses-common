@@ -16,7 +16,7 @@ class Secrets:
 	def __init__(self, log_level=5, dry_run=False):
 		self.dry_run = dry_run
 		self.log_level = log_level
-		self.ui = cg_shared.ui.Interface()
+		self.ui = moses_common.ui.Interface()
 		self.client = boto3_client('secretsmanager', region_name="us-west-2")
 	
 	@property
@@ -83,7 +83,7 @@ class Secret:
 	def __init__(self, secret_name, log_level=5, dry_run=False):
 		self.dry_run = dry_run
 		self.log_level = log_level
-		self.ui = cg_shared.ui.Interface()
+		self.ui = moses_common.ui.Interface()
 		self.client = boto3_client('secretsmanager', region_name="us-west-2")
 		self.name = secret_name
 		self.info = self.load()

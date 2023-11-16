@@ -100,8 +100,10 @@ class Request:
 		return None
 	
 	def get_header(self, name):
-		if self.headers and name in self.headers:
-			return self.headers[name]
+		if self.headers:
+			for header, value in self.headers.items():
+				if name.lower() == header.lower():
+					return value
 	
 	@property
 	def method(self):
@@ -255,6 +257,9 @@ class Request:
 	@property
 	def body(self):
 		if 'body' in self._event and self._event['body']:
+			content_type = self.get_header('Content-Type')
+			if content_type.lower() == 'application/x-www-form-urlencoded':
+				return common.url_decode(self._event['body'])
 			return common.convert_value(self._event['body'])
 		return None
 	
