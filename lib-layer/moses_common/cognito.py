@@ -2,63 +2,37 @@
 
 import datetime
 import re
-from boto3 import client as boto3_client
 
 import moses_common.__init__ as common
 import moses_common.ui
 
 
-"""
-import moses_common.cognito
-"""
 class User:
 	"""
-	user = moses_common.cognito.User(username=None, access_token=None, log_level=log_level, dry_run=dry_run)
+	import moses_common.cognito
+	
+	user = moses_common.cognito.User(app, log_level=log_level, dry_run=dry_run)
+	user = moses_common.cognito.User({
+		"app_name": app_name,
+		"auth_hostname": auth_hostname,
+		"client_id": client_id
+	}, log_level=log_level, dry_run=dry_run)
 	"""
-	def __init__(self, username, access_token, log_level=5, dry_run=False):
+	def __init__(self, app, log_level=5, dry_run=False):
 		self.dry_run = dry_run
 		self.log_level = log_level
 		self.ui = moses_common.ui.Interface()
 		
-		self.client = boto3_client('cognito-idp', region_name="us-west-2")
+		self._app = app
+		self.token_url = None
+		self.user_info_url = None
+		if self.auth_hostname:
+			self.token_url = f"https://{self.auth_hostname}/oauth2/token"
+			self.user_info_url = f"https://{self.auth_hostname}/oauth2/userInfo"
 		
-		self._info = self.get_user_from_access_token(access_token)
+		self._jwt = None
+		self._info = None
 		
-	
-# 	def get_user_from_access_token(self, access_token):
-# 		try:
-# 			response = self.client.get_user(
-# 				AccessToken = access_token
-# 			)
-# 		except self.client.exceptions.NotAuthorizedException as e:
-# 			print("error: {}".format(e))
-# 			raise e
-# 		else:
-# 			print("response {}: {}".format(type(response), response))
-# 			if common.is_success(response) and 'Username' in response:
-# 				self._info = response
-# 				return True
-# 			return False
-	
-	def get_user_from_access_token(self, access_token, debug=True):
-		if not access_token:
-			return None
-		url = 'https://auth.artintelligence.gallery/oauth2/userInfo';
-		response_code, response_data = common.get_url(url, {
-			"bearer_token": access_token,
-			"headers": {
-				"Content-Type": "application/x-www-form-urlencoded"
-			}
-		})
-		
-# 		print("response_data {}: {}".format(type(response_data), response_data))
-		if response_code != 200:
-			self.ui.error(f"Failed with error {response_code} {response_data}")
-			return None
-		if type(response_data) is dict and 'username' in response_data:
-			return response_data
-		return None
-	
 	
 	@property
 	def log_level(self):
@@ -69,24 +43,178 @@ class User:
 		self._log_level = common.normalize_log_level(value)
 	
 	@property
-	def exists(self):
-		if self._info and type(self._info) is dict and self._info.get('username'):
-			return True
-		return False
+	def client_id(self):
+		if self._app and type(self._app) is dict:
+			return self._app.get('client_id')
+		return None
+	
+	@property
+	def client_secret(self):
+		if self._app and type(self._app) is dict:
+			return self._app.get('client_secret')
+		return None
+	
+	@property
+	def auth_hostname(self):
+		if self._app and type(self._app) is dict:
+			return self._app.get('auth_hostname')
+		return None
+	
+	@property
+	def jwt(self):
+		if self._jwt:
+			return self._jwt.copy()
+		return None
+	
+	@jwt.setter
+	def jwt(self, value):
+		if type(value) is not dict or 'access_token' not in value or 'refresh_token' not in value:
+			return
+		self._jwt = value
+	
+	@property
+	def access_token(self):
+		if self._jwt:
+			return self._jwt.get('access_token')
+		return None
+	
+	@access_token.setter
+	def access_token(self, value):
+		if type(value) is str:
+			if not self._jwt:
+				self._jwt = {}
+			self._jwt['access_token'] = value
+	
+	@property
+	def refresh_token(self):
+		if self._jwt:
+			return self._jwt.get('refresh_token')
+		return None
+	
+	@refresh_token.setter
+	def refresh_token(self, value):
+		if type(value) is str:
+			if not self._jwt:
+				self._jwt = {}
+			self._jwt['refresh_token'] = value
+	
+	@property
+	def info(self):
+		if self._info:
+			return self._info.copy()
+		return None
 	
 	@property
 	def username(self):
-		if self.exists:
+		if self._info:
 			return self._info.get('username')
 		return None
 	
 	@property
 	def sub(self):
-		if self.exists:
+		if self._info:
 			return self._info.get('sub')
 		return None
 	
-	@property
-	def data(self):
-		return self._info
+	"""
+	success = user.get_tokens_from_code(code, redirect_uri)
+	"""
+	def get_tokens_from_code(self, code, redirect_uri):
+		data = {
+			"grant_type": "authorization_code",
+			"client_id": self.client_id,
+			"code": code,
+			"redirect_uri": redirect_uri
+		}
+		
+		response_code, response_data = common.get_url(self.token_url, {
+			"method": "POST",
+			"username": self.client_id,
+			"password": self.client_secret,
+			"headers": {
+				"Content-Type": "application/x-www-form-urlencoded"
+			},
+			"data": data
+		}, log_level=self.log_level, dry_run=self.dry_run)
+		
+		if self.dry_run:
+			self.jwt = {
+				"access_token": "access-xxxxx",
+				"refresh_token": "refresh-xxxxx"
+			}
+			return True
+		
+		if response_code != 200:
+			self.ui.error(f"Failed with error {response_code} {response_data}")
+			return None
+		if type(response_data) is dict and 'access_token' in response_data:
+			self.jwt = response_data
+			return True
+		return False
+	
+	
+	def refresh_access_token(self):
+		if not jwt or 'refresh_token' not in jwt:
+			return False, "No refresh token"
+		
+		data = {
+			"grant_type": "authorization_code",
+			"client_id": clientId,
+			"code": code,
+			"redirect_uri": "https://dev.artintelligence.gallery/latest"
+		}
+		
+		response_code, response_data = common.get_url(self.token_url, {
+			"method": "POST",
+			"headers": {
+				"Content-Type": "application/x-www-form-urlencoded"
+			},
+			"data": data
+		}, log_level=self.log_level, dry_run=self.dry_run)
+		
+# 		print("response_data {}: {}".format(type(response_data), response_data))
+		if response_code != 200:
+			self.ui.error(f"Failed with error {response_code} {response_data}")
+			return None
+		if type(response_data) is dict and 'username' in response_data:
+			return response_data
+		return None
+	
+	"""
+	user_info = user.get_user_from_access_token()
+	
+	{
+		"sub": "a38e7dd2-xxx",
+		"email_verified": "false",
+		"email": "qnqdrdyx2r@privaterelay.appleid.com",
+		"username": "signinwithapple_001124.69bbda7a9d4c4289834295cd7e3198fd.2208"
+	}
+	"""
+	def get_user_from_access_token(self):
+		if not self.access_token:
+			return None
+		response_code, response_data = common.get_url(self.user_info_url, {
+			"bearer_token": self.access_token,
+			"headers": {
+				"Content-Type": "application/x-www-form-urlencoded"
+			}
+		}, log_level=self.log_level, dry_run=self.dry_run)
+		
+		if self.dry_run:
+			self._info = {
+				"sub": "sub-xxxxx",
+				"email_verified": "false",
+				"email": "qnqdrdyx2r@example.com",
+				"username": "username-xxxxx"
+			}
+			return self._info
+		
+		if response_code != 200:
+			self.ui.error(f"Failed with error {response_code} {response_data}")
+			return None
+		if type(response_data) is dict and 'username' in response_data:
+			self._info = response_data
+			return self._info
+		return None
+	
 	

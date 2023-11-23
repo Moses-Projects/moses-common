@@ -214,6 +214,15 @@ class Request:
 		return path_parts
 	
 	@property
+	def input(self):
+		input = {}
+		if self.query:
+			input = self.query
+		if self.body:
+			input = self.body
+		return input
+	
+	@property
 	def query(self):
 		if 'queryStringParameters' in self._event and type(self._event['queryStringParameters']) is dict:
 			return copy.deepcopy(self._event['queryStringParameters'])
@@ -258,10 +267,58 @@ class Request:
 	def body(self):
 		if 'body' in self._event and self._event['body']:
 			content_type = self.get_header('Content-Type')
-			if content_type.lower() == 'application/x-www-form-urlencoded':
+			if content_type and content_type.lower() == 'application/x-www-form-urlencoded':
 				return common.url_decode(self._event['body'])
 			return common.convert_value(self._event['body'])
 		return None
+	
+	def get_cookie_string(self,
+		key,
+		value,
+		secure=True,
+		http_only=True,
+		domain=None,
+		path='/',
+		expires=None,
+		max_age=1,
+		host_prefix=True,
+		secure_prefix=False
+	):
+		
+		if type(value) is dict or type(value) is list:
+			value = common.make_base64(common.make_json(value))
+		
+		if host_prefix:
+			key = '__Host-' + key
+		elif secure_prefix:
+			key = '__Secure-' + key
+		
+		cookie = key + '=' + value
+		
+		if domain:
+			cookie += '; domain=' + domain
+		
+		if path:
+			cookie += '; path=' + path
+		
+		time_format = "%a, %d %b %Y %H:%M:%S %Z"
+		if max_age:
+			dt = common.get_dt_future(days=max_age)
+			cookie += '; expires=' + dt.strftime(time_format)
+		
+		elif expires:
+			dt = common.convert_string_to_datetime(expires)
+			cookie += '; expires=' + dt.strftime(time_format)
+		
+		if secure:
+			cookie += '; Secure'
+		
+		if http_only:
+			cookie += '; HttpOnly'
+		
+		return cookie
+	
+	
 	
 	"""
 	new_event = api.generate_event(stage, path, method='GET', query={}, body={})

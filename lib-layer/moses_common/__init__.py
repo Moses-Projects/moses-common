@@ -44,7 +44,10 @@ response_code, response_data = common.get_url(url, {
 	}
 })
 """
-def get_url(url, args={}, debug=False, dry_run=False):
+def get_url(url, args={}, debug=False, dry_run=False, log_level=5):
+	if debug:
+		log_level = 7
+	
 	if type(args) is not dict:
 		raise AttributeError("get_url arg should be a dict.")
 	
@@ -52,9 +55,9 @@ def get_url(url, args={}, debug=False, dry_run=False):
 	if 'headers' in args and type(args['headers']) is dict:
 		headers = args['headers']
 	
-	if 'bearer_token' in args:
+	if args.get('bearer_token'):
 		headers['Authorization'] = 'Bearer {}'.format(args['bearer_token'])
-	elif 'username' in args and 'password' in args:
+	elif args.get('username') and args.get('password'):
 		credentials = ('%s:%s' % (args['username'], args['password']))
 		encoded_credentials = base64.b64encode(credentials.encode('ascii'))
 		headers['Authorization'] = 'Basic {}'.format(encoded_credentials.decode("ascii"))
@@ -68,7 +71,7 @@ def get_url(url, args={}, debug=False, dry_run=False):
 			data = args['data'].encode('ascii')
 	
 	method = 'GET'
-	if 'method' in args:
+	if args.get('method'):
 		method = args['method']
 	elif data:
 		method = 'POST'
@@ -77,12 +80,14 @@ def get_url(url, args={}, debug=False, dry_run=False):
 		query = urllib.parse.urlencode(args['query'])
 		url += '?' + query
 	
-	if debug or dry_run:
+	if log_level >= 7 or dry_run:
 		print("method:", method)
 		print("url:", url)
 		print("headers: {}".format(headers))
 		if data:
 			print("data {}: {}".format(type(data), data))
+	elif log_level >= 6:
+		print(f"{method} {url}")
 	
 	if dry_run:
 		return 200, "Dry run response"
@@ -149,7 +154,7 @@ base64_object = common.parse_base64(base64_string)
 def parse_base64(base64_string):
 	if type(base64_string) is not str:
 		return None
-	base64_string = base64_string.lstrip().rstrip()
+	base64_string = base64_string.strip()
 	if not re.match(r'[A-Za-z0-9\+/]+={0,2}$', base64_string):
 		return None
 	try:
@@ -158,6 +163,13 @@ def parse_base64(base64_string):
 	except ValueError as e:
 		return base64_string
 	return base64_string
+
+"""
+base64_string = common.make_base64(string)
+"""
+def make_base64(text):
+	b64_bytes = base64.b64encode(text.encode('utf-8'))
+	return b64_bytes.decode('utf-8')
 
 
 """
@@ -182,6 +194,7 @@ def decompress_gzip(gzip_bytes):
 		print(e)
 		return None
 	return output
+
 
 """
 boolean = common.is_json(json_string)
@@ -1112,6 +1125,10 @@ def get_dt_now(format=None):
 	if format == 'time':
 		return now.time()
 	return now
+
+def get_dt_future(days=0):
+	tz = datetime.timezone(datetime.timedelta(hours=0))
+	return datetime.datetime.now(tz) + datetime.timedelta(days=days)
 
 def get_dt_past(days=0):
 	tz = datetime.timezone(datetime.timedelta(hours=0))
