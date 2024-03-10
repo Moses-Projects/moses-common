@@ -21,6 +21,8 @@ import json
 import re
 import urllib.request
 import urllib.parse
+from botocore.exceptions import ClientError
+from boto3 import client as boto3_client
 
 import moses_common.__init__ as common
 import moses_common.ui
@@ -646,3 +648,344 @@ class Request:
 		return meta_data
 
 
+class API:
+	"""
+	import moses_common.api_gateway
+	api = moses_common.api_gateway.API(api_name, log_level=log_level, dry_run=dry_run)
+	"""
+	def __init__(self, api_name, log_level=5, dry_run=False):
+		self.dry_run = dry_run
+		self.log_level = log_level
+		
+		self.ui = moses_common.ui.Interface()
+		self.client = boto3_client('apigateway', region_name="us-west-2")
+		
+		self.name = api_name
+		self._resources = None
+		if self.load():
+			self.exists = True
+		else:
+			self.exists = False
+	
+	@property
+	def log_level(self):
+		return self._log_level
+	
+	@log_level.setter
+	def log_level(self, value):
+		self._log_level = common.normalize_log_level(value)
+	
+	"""
+	api_info = api.load()
+	
+	{
+		"id": "mlgl4rez63",
+		"name": "cg-api-dev",
+		"description": "ClassGather dev environment API",
+		"createdDate": datetime.datetime(2022, 10, 4, 13, 2, 5, tzinfo=tzlocal()),
+		"binaryMediaTypes": [ "*/*" ],
+		"apiKeySource": "HEADER",
+		"endpointConfiguration": {
+			"types": [ "REGIONAL" ]
+		},
+		"disableExecuteApiEndpoint": false
+	}
+	"""
+	def load(self, paginator_value=None):
+		paginator_field = 'position'
+		list_field = 'items'
+		name_field = 'name'
+		try:
+			if paginator_value:
+				response = self.client.get_rest_apis(
+					position = paginator_value
+				)
+			else:
+				response = self.client.get_rest_apis()
+		except ClientError as e:
+			raise e
+		else:
+			if common.is_success(response) and type(response) is dict and list_field in response:
+				for item in response[list_field]:
+					if item[name_field] == self.name:
+						self._info = item
+						return True
+				# Grab more results
+				if paginator_field in response:
+					return self.load(response[paginator_field])
+			return False
+	
+	@property
+	def id(self):
+		if self.exists or 'id' in self._info:
+			return self._info['id']
+		return None
+	
+	@property
+	def resources(self):
+		if not self._resources:
+			self.load_resources()
+		return self._resources
+	
+	def load_resources(self, paginator_value=None):
+		paginator_field = 'position'
+		list_field = 'items'
+		name_field = 'path'
+		try:
+			if paginator_value:
+				response = self.client.get_resources(
+					restApiId = self.id,
+					embed = [ 'methods' ],
+					position = paginator_value
+				)
+			else:
+				response = self.client.get_resources(
+					restApiId = self.id,
+					embed = [ 'methods' ]
+				)
+		except ClientError as e:
+			raise e
+		else:
+			if common.is_success(response) and type(response) is dict and list_field in response:
+				if not self._resources:
+					self._resources = []
+				self._resources.extend(response[list_field])
+				# Grab more results
+				if paginator_field in response:
+					return self.load_resources(response[paginator_field])
+				else:
+					return True
+			return False
+	
+	"""
+	parent_path, path_part = api.get_path_parts(path)
+	parent_path, path_part = api.get_path_parts(path, is_proxy=True)
+	"""
+	def get_path_parts(self, path, is_proxy=False):
+		if is_proxy:
+			return path, '{proxy+}'
+		parent_path = re.sub(r'\/.*?$', '', path)
+		if not parent_path:
+			parent_path = '/'
+		path_part = re.sub(r'.*\/', '', path)
+		return parent_path, path_part
+	
+	
+	"""
+	resource = api.get_resource(path)
+	
+	resource = api.get_resource('/')
+	{
+		"id": "4rcomuaxea",
+		"path": "/"
+	}
+	resource = api.get_resource('/customer')
+	{
+		"id": "6y3d5d",
+		"parentId": "4rcomuaxea",
+		"pathPart": "customers",
+		"path": "/customers",
+		"resourceMethods": {
+			"ANY": {}
+		}
+	}
+	resource = api.get_resource('/customer', is_proxy=True)
+	{
+		"id": "4k3t7t",
+		"parentId": "6y3d5d",
+		"pathPart": "{proxy+}",
+		"path": "/customers/{proxy+}",
+		"resourceMethods": {
+			"ANY": {}
+		}
+	}
+	"""
+	def get_resource(self, path, is_proxy=False, get_original=False):
+		if is_proxy:
+			path += '/{proxy+}'
+		for resource in self.resources:
+			if path == resource['path']:
+				if get_original:
+					return resource
+				else:
+					return resource.copy()
+	
+	"""
+	success = api.create_resource(path)
+	success = api.create_resource(path, is_proxy=True)
+	"""
+	def create_resource(self, path, is_proxy=False):
+		parent_path, path_part = self.get_path_parts(path, is_proxy=is_proxy)
+		parent_resource = self.get_resource(parent_path)
+		if not parent_resource:
+			return False
+		parent_id = parent_resource['id']
+		
+		if self.dry_run:
+			self.ui.dry_run(f"create_resource('{path}')")
+			if self._resources:
+				self._resources.append({
+					"id": "xxx",
+					"parentId": "parent_id",
+					"pathPart": path_part,
+					"path": path
+				})
+			return True
+		try:
+			response = self.client.create_resource(
+				restApiId = self.id,
+				parentId = parent_id,
+				pathPart = path_part
+			)
+		except ClientError as e:
+			raise e
+		else:
+			if common.is_success(response) and 'path' in response:
+				if self._resources:
+					self._resources.append(response)
+				return True
+			return False
+	
+	"""
+	success = api.get_methods(path)
+	success = api.get_methods(path, is_proxy=True)
+	"""
+	def get_methods(self, path, is_proxy=False):
+		if is_proxy:
+			path += '/{proxy+}'
+		resource = self.get_resource(path)
+		if 'resourceMethods' in resource:
+			return resource['resourceMethods']
+		return []
+	
+	"""
+	success = api.get_method(path, method)
+	success = api.get_method(path, method, is_proxy=True)
+	"""
+	def get_method(self, path, method, is_proxy=False):
+		methods = self.get_methods(path, is_proxy=is_proxy)
+		if method in methods:
+			return methods[method]
+		return None
+	
+	"""
+	success = api.set_method(path, method, method_def)
+	success = api.set_method(path, method, method_def, is_proxy=True)
+	"""
+	def set_method(self, path, method, method_def, is_proxy=False):
+		resource = self.get_resource(path, is_proxy=is_proxy, get_original=True)
+		if not resource:
+			return False
+		if 'resourceMethods' not in resource:
+			resource['resourceMethods'] = {}
+		
+		resource['resourceMethods'][method.upper()] = method_def
+		return True
+	
+	"""
+	success = api.put_method(path, method)
+	success = api.put_method(path, method, is_proxy=True)
+	"""
+	def put_method(self, path, method, lambda_arn, is_proxy=False):
+		resource = self.get_resource(path, is_proxy=is_proxy)
+		if not resource:
+			return False
+		method = method.upper()
+		
+		request_parameters = {}
+		if is_proxy:
+			request_parameters = { "method.request.path.proxy": True }
+		
+		new_method_def = None
+		
+		if self.dry_run:
+			self.ui.dry_run(f"put_method('{path}', '{method}')")
+			return True
+		try:
+			response = self.client.put_method(
+				restApiId = self.id,
+				resourceId = resource['id'],
+				httpMethod = method,
+				authorizationType = 'NONE',
+				apiKeyRequired = False,
+				requestParameters = request_parameters
+			)
+		except ClientError as e:
+			raise e
+		else:
+			if common.is_success(response) and 'httpMethod' in response:
+				del(response['ResponseMetadata'])
+				new_method_def = response
+			else:
+				return False
+		
+		if not is_proxy:
+			try:
+				response = self.client.put_method_response(
+					restApiId = self.id,
+					resourceId = resource['id'],
+					httpMethod = method,
+					statusCode = '200',
+					responseModels = { "application/json": "Empty" }
+				)
+			except ClientError as e:
+				raise e
+			else:
+				if common.is_success(response) and 'statusCode' in response:
+					del(response['ResponseMetadata'])
+					new_method_def['methodResponses'] = {
+						response['statusCode']: response
+					}
+				else:
+					return False
+		
+		cache_key_parameters = []
+		if is_proxy:
+			cache_key_parameters = [ "method.request.path.proxy" ]
+		
+		try:
+			response = self.client.put_integration(
+				restApiId = self.id,
+				resourceId = resource['id'],
+				httpMethod = method,
+				type = 'AWS_PROXY',
+				integrationHttpMethod = 'POST',
+				uri = f"arn:aws:apigateway:us-west-2:lambda:path/2015-03-31/functions/{lambda_arn}/invocations",
+				passthroughBehavior = 'WHEN_NO_MATCH',
+				contentHandling = 'CONVERT_TO_TEXT',
+				cacheNamespace = resource['id'],
+				cacheKeyParameters = cache_key_parameters,
+				timeoutInMillis = 29000
+			)
+		except ClientError as e:
+			raise e
+		else:
+			if common.is_success(response) and 'type' in response:
+				del(response['ResponseMetadata'])
+				new_method_def['methodIntegration'] = response
+			else:
+				return False
+		
+		try:
+			response = self.client.put_integration_response(
+				restApiId = self.id,
+				resourceId = resource['id'],
+				httpMethod = method,
+				statusCode = '200',
+				responseTemplates = {}
+			)
+		except ClientError as e:
+			raise e
+		else:
+			if common.is_success(response) and 'statusCode' in response:
+				del(response['ResponseMetadata'])
+				new_method_def['methodIntegration']['integrationResponses'] = {
+					response['statusCode']: response
+				}
+			else:
+				return False
+		
+		self.set_method(path, method, new_method_def, is_proxy=is_proxy)
+		return True
+		
+	

@@ -450,14 +450,14 @@ class Interface:
 			return
 		self.info(self._usage_message)
 	
-	def pretty(self, input, label=None):
+	def pretty(self, input, label=None, colorize=True):
 		if label:
 			label = self.convert_slack_to_ansi(label)
 			if len(label):
 				print(label)
 		if self.is_person and (type(input) is dict or type(input) is list):
 			input = common.make_json(input, pretty_print=True)
-			if self.supports_color:
+			if self.supports_color and colorize:
 				input = re.sub(r'(".*?"):', lambda m: self.format_text(m.group(1), 'blue') + ':', str(input))
 				input = re.sub(r': (".*?")', lambda m: ': ' + self.format_text(m.group(1), 'red'), str(input))
 				input = re.sub(r': ([0-9.-]+)', lambda m: ': ' + self.format_text(m.group(1), 'maroon'), str(input))

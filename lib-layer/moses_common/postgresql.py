@@ -34,7 +34,7 @@ class DBH:
 		7: All SELECT and DO statements
 	"""
 	def __init__(self, args, log_level=5, dry_run=False):
-		self._dry_run = dry_run
+		self.dry_run = dry_run
 		self.log_level = log_level
 		
 		missing = []
@@ -72,8 +72,8 @@ class DBH:
 			logging.error(e)
 			raise ConnectionError("Unable to connect to database {}@{}:{}/{}".format(db['username'], db['host'], db['port'], db['dbname']))
 		
-		self._now = datetime.datetime.utcnow()
-		self._ui = moses_common.ui.Interface()
+		self.now = datetime.datetime.utcnow()
+		self.ui = moses_common.ui.Interface()
 	
 	
 	@property
@@ -84,10 +84,6 @@ class DBH:
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
     
-	@property
-	def now(self):
-		return self._now
-	
 	"""
 	dbh.close()
 	"""
@@ -96,6 +92,8 @@ class DBH:
 		self._conn = None
 		return True
 	
+	
+	# SQL Generation
 	
 	"""
 	quoted_identifier = dbh.identifier(value)
@@ -145,7 +143,7 @@ class DBH:
 			for val in value:
 				qlist.append(self._quote_single_value(val))
 			return 'ARRAY[' + ','.join(qlist) + ']'
-		elif type(value) is type(self._now):
+		elif type(value) is type(self.now):
 			return psql.Literal(value.isoformat()).as_string(self._conn)
 	
 	"""
@@ -158,568 +156,60 @@ class DBH:
 		return qsearch
 	
 	"""
-	where_conditional = dbh.make_where_conditional(key, value)
-	where_conditional = dbh.make_where_conditional(key, value_list)
-	where_conditional = dbh.make_where_conditional(key, value_list, 'ilike')
-	"""
-	def make_where_conditional(self, key, value_list, operator=None, should_quote_identifier=False):
-	# 	print("{} = {}".format(key, value_list))
-		qkey = key
-		if should_quote_identifier:
-			qkey = self.identifier(key)
-		
-		if not operator:
-			operator = '='
-		
-		if type(value_list) is not list:
-			value_list = [value_list]
-		
-		if not len(value_list):
-			return None
-		
-		if operator == 'is' or type(value_list[0]) is bool:
-			value = common.convert_to_bool(value_list[0])
-			if value is None:
-				raise TypeError(f"Value for '{key}' must be a boolean")
-			return '{} IS {}'.format(qkey, value)
-		elif operator == '@>' or operator == '<@':
-			return '{} {} {}'.format(qkey, operator.upper(), self.quote(value_list, quote_arrays=True))
-		elif operator == 'like' or operator == 'ilike':
-			values = []
-			for value in value_list:
-				nvalue = common.normalize(value)
-				value_words = nvalue.split(' ')
-				for word in value_words:
-					values.append('{} {} {}'.format(qkey, operator.upper(), self.quote_like(word)))
-			return self.join_where_conditionals(values, 'and')
-		
-		if len(value_list) > 1:
-			return '{} IN ({})'.format(qkey, ', '.join(self.quote(value_list)))
-		else:
-			return '{} {} {}'.format(qkey, operator.upper(), self.quote(value_list[0]))
-	
-	"""
-	joined_where_conditionals = dbh.join_where_conditionals(conditional_list, conjunction)
-	"""
-	def join_where_conditionals(self, conditional_list, conjunction='and', include_paren=True):
-		if conjunction.lower() != 'and' and conjunction.lower() != 'or':
-			raise AttributeError("Invalid where conditional conjunction. Can only be 'and' or 'or'.")
-		conjunction = ' ' + conjunction.upper() + ' '
-		
-		if len(conditional_list) > 1:
-			if include_paren:
-				return '(' + conjunction.join(conditional_list) + ')'
-			else:
-				return conjunction.join(conditional_list)
-		elif len(conditional_list) == 1:
-			return conditional_list[0]
-		return ''
-	
-	"""
-	where_clause = dbh.make_where_clause({
-		"key": "value",
-		"key2": ["value2", "value3"],
-		"key3": {
-			"operator": "ilike",
-			"value": ["value4", "value5"]
-		}
-	}, conjunction)
-	"""
-	def make_where_clause(self, args, conjunction='and', should_quote_identifier=False):
-		where_sql_list = []
-		for key, value in args.items():
-			if type(value) is dict:
-				operator = ''
-				should_quote_identifier = False
-				if 'should_quote_identifier' in value and value['should_quote_identifier']:
-					should_quote_identifier = True
-				if 'operator' in value:
-					operator = value['operator']
-				where_sql_list.append(self.make_where_conditional(key, value['value'], operator, should_quote_identifier))
-			else:
-				where_sql_list.append(self.make_where_conditional(key, value))
-		return self.join_where_conditionals(where_sql_list, conjunction)
-		
-	"""
-	where_clause = dbh.convert_hash_to_where([
-		[ "hash_key1" ],
-		[ "hash_key2", "field_name2" ],
-		[ "hash_key3", "field_name3", "operator" ]
-	], hash)
-	
-	* field_name defaults to hash_key
-	* operator defaults to "="
-	
-	"""
-	def convert_hash_to_where(self, field_map, query):
-		top_where = {}
-		where_list = []
-		for field_def in field_map:
-			key = field_def[0]
-			field = key
-			if len(field_def) >= 2:
-				field = field_def[1]
-			operator = None
-			if len(field_def) >= 3:
-				operator = field_def[2]
-			
-			if key in query:
-				if type(field) is list:
-					conditional_hash = {}
-					for fld in field:
-						conditional_hash[fld] = { "operator": operator, "value": query[key] }
-					where_list.append(self.make_where_clause(conditional_hash, 'or'))
-				else:
-					top_where[field] = { "operator": operator, "value": query[key] }
-		where_sql = self.make_where_clause(top_where)
-		if where_sql:
-			where_list.append(where_sql)
-		if len(where_list):
-			return ' WHERE ' + self.join_where_conditionals(where_list, 'and', False)
-		return ''
-	
-	"""
-	modifiers_clause = dbh.make_modifiers_clause({
-		"sort": sort,
-		"order": order,
-		"offset": offset,
-		"limit": limit
-	})
-	"""
-	def make_modifiers_clause(self, args):
-		sql = ''
-		if 'sort' in args:
-			sql += " ORDER BY " + self.identifier(args['sort'])
-		
-		if 'order' in args and args['order'] and (args['order'].lower() == 'asc' or args['order'].lower() == 'desc'):
-			if sql:
-				sql += " " + args['order'].upper()
-		
-		if 'offset' in args and int(args['offset']) > 0:
-			sql += " OFFSET " + str(args['offset'])
-		
-		if 'limit' in args and int(args['limit']) > 0:
-			sql += " LIMIT " + str(args['limit'])
-		
-		return sql
-	
-	
-	"""
-	insert_clause = dbh.make_insert_clause(field_list, data)
-	"""
-	def make_insert_clause(self, field_list, data):
-		if type(data) is not list:
-			data = [data]
-		
-		names = []
-		for field in field_list:
-			names.append(self.identifier(field))
-		
-		values = []
-		for record in data:
-			record_values = []
-			for field in field_list:
-				value = None
-				if field in record:
-					value = record[field]
-				if re.search(r'\.', field):
-					parts = field.split('.')
-					if parts[0] in record and type(record[parts[0]]) is dict and parts[1] in record[parts[0]]:
-						value = record[parts[0]][parts[1]]
-				qvalue = self._quote_single_value(value)
-				if not qvalue:
-					qvalue = 'NULL'
-				record_values.append(qvalue)
-			values.append('(' + ', '.join(record_values) + ')')
-		sql = '(' + ', '.join(names) + ') VALUES ' + ', '.join(values)
-		return sql
-	
-	"""
-	record = dbh.select_base(sql)
-	"""
-	def select_base(self, sql, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		records = cursor.fetchall()
-		cursor.close()
-		return list(records)
-	
-	"""
-	boolean = dbh.exists(table_name, id_name, id_value)
-	"""
-	def exists(self, table_name, id_name, id_value):
-		sql = "SELECT {} FROM {} WHERE {} = {} LIMIT 1".format(self.identifier(id_name), table_name, self.identifier(id_name), self.quote(id_value))
-		results = self.select_base(sql)
-		if len(results):
-			return True
-		return False
-	
-	"""
-	Returns this first field of the first record.
-	
-	value = dbh.select_value(sql)
-	"""
-	def select_value(self, sql, args=None):
-		results = self.select_base(sql, args)
-		if len(results):
-			values = list(results[0])
-			if len(values):
-				return values[0]
-		return None
-	
-	"""
-	Returns the first record as a list.
-	
-	record = dbh.select_as_list(sql)
-	"""
-	def select_as_list(self, sql, args=None):
-		results = self.select_base(sql, args)
-		if len(results):
-			return list(results[0])
-		else:
-			return None
-	
-	"""
-	Returns the first record as a hash.
-	
-	records = dbh.select_as_hash(sql)
-	"""
-	def select_as_hash(self, sql, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		row = cursor.fetchone()
-		if not row:
-			return
-		columns = [desc[0] for desc in cursor.description]
-		cursor.close()
-		
-		record = {}
-		for i in range(len(columns)):
-			record[columns[i]] = row[i]
-		return record
-	
-	"""
-	Returns the first field of all records as a list.
-	
-	records = dbh.select_column(sql)
-	"""
-	def select_column(self, sql, args=None):
-		results = self.select_base(sql, args)
-		records = []
-		for row in results:
-			records.append(list(row)[0])
-		return records
-	
-	"""
-	Returns the first field of all records as the hash value using the specified key as the hash key.
-	
-	records = dbh.select_column_as_hash(sql, key)
-	"""
-	def select_column_as_hash(self, sql, key, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		rows = cursor.fetchall()
-		columns = [desc[0] for desc in cursor.description]
-		cursor.close()
-		
-		records = {}
-		for row in rows:
-			record = {}
-			for i in range(len(columns)):
-				record[columns[i]] = row[i]
-			records[record[key]] = row[0]
-		return records
-	
-	"""
-	Returns each record as a list in a list.
-	
-	records = dbh.select_as_list_of_lists(sql)
-	"""
-	def select_as_list_of_lists(self, sql, args=None):
-		results = self.select_base(sql, args)
-		records = []
-		for row in results:
-			records.append(list(row))
-		return records
-	
-	"""
-	Returns each record as a hash in a list.
-	
-	records = dbh.select_as_list_of_hashes(sql)
-	"""
-	def select_as_list_of_hashes(self, sql, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		rows = cursor.fetchall()
-		columns = [desc[0] for desc in cursor.description]
-		cursor.close()
-		
-		records = []
-		for row in rows:
-			record = {}
-			for i in range(len(columns)):
-				record[columns[i]] = row[i]
-			records.append(record)
-		return records
-	
-	"""
-	Returns each record as a hash in a hash using the specified key as the hash key.
-	
-	records = dbh.select_as_hash_of_hashes(sql, key)
-	"""
-	def select_as_hash_of_hashes(self, sql, key, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		rows = cursor.fetchall()
-		columns = [desc[0] for desc in cursor.description]
-		cursor.close()
-		
-		records = {}
-		for row in rows:
-			record = {}
-			for i in range(len(columns)):
-				record[columns[i]] = row[i]
-			records[record[key]] = record
-		return records
-	
-	"""
-	num_of_inserts = dbh.insert(table_name, data)
-	num_of_inserts = dbh.insert(table_name, data, quote_keys=True)
-	"""
-	def insert(self, table_name, data, quote_keys=False, defaults={}):
-		if type(data) is not list:
-			data = [data]
-		if not len(data):
-			return 0
-		
-		multi = True
-		key_list = []
-		insert_data = []
-		for record in data:
-			insert, errors = self.quote_for_table(table_name, record, check_nullable=True, defaults=defaults)
-			if len(errors):
-				raise ValueError("\n".join(errors))
-			insert_data.append(insert)
-			if not len(key_list):
-				key_list = sorted(insert.keys())
-			else:
-				record_key_list = sorted(insert.keys())
-				if key_list != record_key_list:
-					multi = False
-		
-		# Combined inserts
-		if multi:
-			# Quote keys
-			qkey_list = []
-			for key in key_list:
-				qkey = key
-				if quote_keys:
-					qkey = self.identifier(key)
-				qkey_list.append(qkey)
-			
-			# Quote and compile values
-			values_list = []
-			for record in insert_data:
-				value_list = []
-				for key in key_list:
-					value_list.append(record[key])
-				values_list.append("({})".format(', '.join(value_list)))
-			sql = "INSERT INTO {} ({}) VALUES {}".format(table_name, ', '.join(key_list), ', '.join(values_list))
-			response = self.do(sql)
-			return response
-		
-		# Individual inserts
-		cnt = 0
-		for record in insert_data:
-			qkey_list = []
-			value_list = []
-			for key in record.keys():
-				qkey = key
-				if quote_keys:
-					qkey = self.identifier(key)
-				qkey_list.append(qkey)
-				value_list.append(record[key])
-			
-			sql = "INSERT INTO {} ({}) VALUES ({})".format(table_name, ', '.join(qkey_list), ', '.join(value_list))
-			response = self.do(sql)
-			cnt += response
-		return cnt
-	
-	"""
-	num_of_updates = dbh.update(table_name, key, data)
-	num_of_updates = dbh.update(table_name, key, data, quote_keys=True)
-	"""
-	def update(self, table_name, key_name, data, quote_keys=False):
-		if type(data) is not list:
-			data = [data]
-		
-		cnt = 0
-		for record in data:
-			update, errors = self.quote_for_table(table_name, record)
-			if len(errors):
-				raise ValueError("\n".join(errors))
-			
-			set_pairs = []
-			where_hash = {}
-			for key, value in update.items():
-				qkey = key
-				if quote_keys:
-					qkey = self.identifier(key)
-				if key == key_name:
-					where_hash[key] = record[key]
-				else:
-					set_pairs.append("{} = {}".format(qkey, update[key]))
-			if not len(where_hash) or not len(set_pairs):
-				return
-			
-			where_clause = self.make_where_clause(where_hash, should_quote_identifier=quote_keys)
-			sql = "UPDATE {} SET {} WHERE {}".format(table_name, ', '.join(set_pairs), where_clause)
-			
-			cnt += self.do(sql)
-		return cnt
-	
-	"""
-	num_deleted = dbh.delete(table_name, {
-		"key": "value",
-		"key2": ["value2", "value3"],
-		"key3": {
-			"operator": "ilike",
-			"value": ["value4", "value5"]
-		}
-	})
-	num_deleted = dbh.delete(table_name, {
-		"key": "value"
-	}, conjunction='or', quote_keys=True)
-	"""
-	def delete(self, table_name, where_clause, conjunction='and', should_quote_identifier=False):
-		where_clause = self.make_where_clause(where_clause, conjunction=conjunction, should_quote_identifier=should_quote_identifier)
-		if not where_clause:
-			return 0
-		
-		sql = "DELETE FROM {} WHERE {}".format(table_name, where_clause)
-		
-		record = self.do(sql)
-		return record
-	
-	"""
-	record = dbh.do(sql)
-	"""
-	def do(self, sql, args=None):
-		if self._dry_run:
-			self._ui.dry_run(sql)
-			return 1
-		if self._log_level >= 6:
-			self._ui.body(sql)
-		
-		sql_parts = re.match(r'(\w+)', sql)
-		command = sql_parts.group(1)
-		
-		if self._readonly:
-			raise ConnectionError("Attempting {command} when set to readonly")
-		
-		cursor = self._conn.cursor()
-		if args:
-			try:
-				cursor.execute(sql, tuple(args))
-			except psycopg2.OperationalError as err:
-				print("Error: {}".format(err))
-				print("Query:", str(cursor.query))
-				cursor.close()
-				return False
-			except psycopg2.ProgrammingError as err:
-				print("Error: {}".format(err))
-				print("Query:", str(cursor.query))
-				cursor.close()
-				return False
-		else:
-			cursor.execute(sql)
-		rowcount = cursor.rowcount
-		self._conn.commit()
-		cursor.close()
-		return rowcount
-	
-	
-	
-	
-	"""
-	insert_data, errors = dbh.quote_for_table(table_name, data)
-	insert_data, errors = dbh.quote_for_table(table_name, data, check_nullable=True, defaults={})
+	quoted_data, errors = dbh.quote_for_table(table_name, data)
+	quoted_data, errors = dbh.quote_for_table(table_name, data, check_nullable=True, defaults={})
 	"""
 	def quote_for_table(self, table_name, data, check_nullable=False, defaults={}):
 		"""
-		bigint
-		bigserial
-		bit [ (n) ]
-		bit varying [ (n) ]
-		boolean
-		box
-		bytea
-		character [ (n) ]
-		character varying [ (n) ]
-		cidr
-		circle
-		date
-		double precision
-		inet
-		integer
-		interval [ fields ] [ (p) ]
-		json
-		jsonb
-		line
-		lseg
-		macaddr
-		macaddr8
-		money
-		numeric [ (p, s) ]
-		path
-		pg_lsn
-		pg_snapshot
-		point
-		polygon
-		real
-		smallint
-		smallserial
-		serial
-		text
-		time [ (p) ] [ without time zone ]
-		time [ (p) ] with time zone
-		timestamp [ (p) ] [ without time zone ]
-		timestamp [ (p) ] with time zone
-		tsquery
-		tsvector
-		txid_snapshot
-		uuid
-		xml
+		boolean - convert_to_bool()
+		date - 
+			"current_date", "now()" -> get_current_date()
+			convert_string_to_date()
+		decimal, numeric, double precision - convert_to_float()
+		integer, smallint, bigint - conver_to_int()
+		text, character, character varying - str()
+		timestamp -
+			datetime datetime
+			datetime date -> convert_string_to_datetime()
+			"current_timestamp", "current_time", "now()" -> get_current_timestamp()
+			convert_string_to_datetime()
+		time -
+			"current_timestamp", "current_time", "now()" -> get_current_time()
+			convert_string_to_time()
+		uuid - 
+			"uuid_generate_*()"
+			str()
+		array - ARRAY[*]::text[]
+		
+		Not yet supported:
+			bigserial
+			bit [ (n) ]
+			bit varying [ (n) ]
+			box
+			bytea
+			cidr
+			circle
+			inet
+			interval [ fields ] [ (p) ]
+			json
+			jsonb
+			line
+			lseg
+			macaddr
+			macaddr8
+			money
+			path
+			pg_lsn
+			pg_snapshot
+			point
+			polygon
+			real
+			smallserial
+			serial
+			tsquery
+			tsvector
+			txid_snapshot
+			xml
 		"""
 		columns = self.get_column_info(table_name)
 		insert = {}
@@ -747,8 +237,9 @@ class DBH:
 			data_type = column['data_type'].lower()
 			
 			if column_name not in data:
-				if check_nullable and required and not column['column_default']:
+				if check_nullable and required and not column['column_default'] and not column['identity_generation']:
 					errors.append(f"'{column_name}' is required")
+					raise TypeError(f"'{column_name}' is required")
 				continue
 			
 			value = data[column_name]
@@ -838,20 +329,190 @@ class DBH:
 		
 		return insert, errors
 	
-	
+	"""
+	where_conditional = dbh.make_where_conditional(key, value)
+	where_conditional = dbh.make_where_conditional(key, value_list)
+	where_conditional = dbh.make_where_conditional(key, value_list, 'ilike')
+	"""
+	def make_where_conditional(self, key, value_list, operator=None, should_quote_identifier=False):
+	# 	print("{} = {}".format(key, value_list))
+		qkey = key
+		if should_quote_identifier:
+			qkey = self.identifier(key)
+		
+		if not operator:
+			operator = '='
+		
+		if type(value_list) is not list:
+			value_list = [value_list]
+		
+		if not len(value_list):
+			return None
+		
+		if operator == 'is' or type(value_list[0]) is bool:
+			value = common.convert_to_bool(value_list[0])
+			if value is None:
+				raise TypeError(f"Value for '{key}' must be a boolean")
+			return '{} IS {}'.format(qkey, value)
+		elif operator == '@>' or operator == '<@':
+			return '{} {} {}'.format(qkey, operator.upper(), self.quote(value_list, quote_arrays=True))
+		elif operator == 'like' or operator == 'ilike':
+			values = []
+			for value in value_list:
+				nvalue = common.normalize(value)
+				value_words = nvalue.split(' ')
+				for word in value_words:
+					values.append('{} {} {}'.format(qkey, operator.upper(), self.quote_like(word)))
+			return self.join_where_conditionals(values, 'and')
+		
+		if len(value_list) > 1:
+			return '{} IN ({})'.format(qkey, ', '.join(self.quote(value_list)))
+		else:
+			return '{} {} {}'.format(qkey, operator.upper(), self.quote(value_list[0]))
 	
 	"""
-	column_hash = dbh.get_column_info(table_name)
+	joined_where_conditionals = dbh.join_where_conditionals(conditional_list, conjunction)
 	"""
-	def get_column_info(self, table_name):
-		schema = 'public'
-		table = table_name
-		if re.search(r'\.', table_name):
-			parts = table_name.split('.')
-			schema = parts[0]
-			table = parts[1]
-		sql = f"SELECT * FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table}'"
-		return self.select_as_hash_of_hashes(sql, 'column_name')
+	def join_where_conditionals(self, conditional_list, conjunction='and', include_paren=True):
+		if conjunction.lower() != 'and' and conjunction.lower() != 'or':
+			raise AttributeError("Invalid where conditional conjunction. Can only be 'and' or 'or'.")
+		conjunction = ' ' + conjunction.upper() + ' '
+		
+		if len(conditional_list) > 1:
+			if include_paren:
+				return '(' + conjunction.join(conditional_list) + ')'
+			else:
+				return conjunction.join(conditional_list)
+		elif len(conditional_list) == 1:
+			return conditional_list[0]
+		return ''
+	
+	"""
+	where_clause = dbh.make_where_clause({
+		"key": "value",
+		"key2": ["value2", "value3"],
+		"key3": {
+			"operator": "ilike",
+			"value": ["value4", "value5"]
+		}
+	}, conjunction)
+	"""
+	def make_where_clause(self, args, conjunction='and', should_quote_identifier=False):
+		where_sql_list = []
+		if type(args) is list:
+			for arg in args:
+				sub_where_sql = self.make_where_clause(arg, should_quote_identifier=should_quote_identifier)
+				where_sql_list.append(sub_where_sql)
+			conjunction = 'or'
+		elif type(args) is dict:
+			for key, value in args.items():
+				if type(value) is dict:
+					operator = ''
+					should_quote_identifier = False
+					if 'should_quote_identifier' in value and value['should_quote_identifier']:
+						should_quote_identifier = True
+					if 'operator' in value:
+						operator = value['operator']
+					where_sql_list.append(self.make_where_conditional(key, value['value'], operator, should_quote_identifier))
+				else:
+					where_sql_list.append(self.make_where_conditional(key, value))
+		return self.join_where_conditionals(where_sql_list, conjunction)
+		
+	"""
+	where_clause = dbh.convert_hash_to_where([
+		[ "hash_key1" ],
+		[ "hash_key2", "field_name2" ],
+		[ "hash_key3", "field_name3", "operator" ]
+	], hash)
+	
+	* field_name defaults to hash_key
+	* operator defaults to "="
+	
+	"""
+	def convert_hash_to_where(self, field_map, query):
+		top_where = {}
+		where_list = []
+		for field_def in field_map:
+			key = field_def[0]
+			field = key
+			if len(field_def) >= 2:
+				field = field_def[1]
+			operator = None
+			if len(field_def) >= 3:
+				operator = field_def[2]
+			
+			if key in query:
+				if type(field) is list:
+					conditional_hash = {}
+					for fld in field:
+						conditional_hash[fld] = { "operator": operator, "value": query[key] }
+					where_list.append(self.make_where_clause(conditional_hash, 'or'))
+				else:
+					top_where[field] = { "operator": operator, "value": query[key] }
+		where_sql = self.make_where_clause(top_where)
+		if where_sql:
+			where_list.append(where_sql)
+		if len(where_list):
+			return ' WHERE ' + self.join_where_conditionals(where_list, 'and', False)
+		return ''
+	
+	"""
+	modifiers_clause = dbh.make_modifiers_clause({
+		"sort": sort,
+		"order": order,
+		"offset": offset,
+		"limit": limit
+	})
+	"""
+	def make_modifiers_clause(self, args):
+		sql = ''
+		if 'sort' in args:
+			sql += " ORDER BY " + self.identifier(args['sort'])
+		
+		if 'order' in args and args['order'] and (args['order'].lower() == 'asc' or args['order'].lower() == 'desc'):
+			if sql:
+				sql += " " + args['order'].upper()
+		
+		if 'offset' in args and int(args['offset']) > 0:
+			sql += " OFFSET " + str(args['offset'])
+		
+		if 'limit' in args and int(args['limit']) > 0:
+			sql += " LIMIT " + str(args['limit'])
+		
+		return sql
+	
+	"""
+	insert_clause = dbh.make_insert_clause(field_list, data)
+	"""
+	def make_insert_clause(self, field_list, data):
+		if type(data) is not list:
+			data = [data]
+		
+		names = []
+		for field in field_list:
+			names.append(self.identifier(field))
+		
+		values = []
+		for record in data:
+			record_values = []
+			for field in field_list:
+				value = None
+				if field in record:
+					value = record[field]
+				if re.search(r'\.', field):
+					parts = field.split('.')
+					if parts[0] in record and type(record[parts[0]]) is dict and parts[1] in record[parts[0]]:
+						value = record[parts[0]][parts[1]]
+				qvalue = self._quote_single_value(value)
+				if not qvalue:
+					qvalue = 'NULL'
+				record_values.append(qvalue)
+			values.append('(' + ', '.join(record_values) + ')')
+		sql = '(' + ', '.join(names) + ') VALUES ' + ', '.join(values)
+		return sql
+	
+	
+	# Get basic values
 	
 	"""
 	uuid = dbh.generate_uuid()
@@ -878,6 +539,560 @@ class DBH:
 		return self.select_value("SELECT CURRENT_DATE")
 	
 	
+	# Get table info
+	
+	"""
+	column_hash = dbh.get_column_info(table_name)
+	"""
+	def get_column_info(self, table_name):
+		schema = 'public'
+		table = table_name
+		if re.search(r'\.', table_name):
+			parts = table_name.split('.')
+			schema = parts[0]
+			table = parts[1]
+		sql = f"SELECT * FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table}'"
+		return self.select_as_hash_of_hashes(sql, 'column_name')
+	
+	
+	# Get records
+	
+	"""
+	record = dbh.select_base(sql)
+	"""
+	def select_base(self, sql, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		records = cursor.fetchall()
+		cursor.close()
+		return list(records)
+	
+	"""
+	boolean = dbh.exists(table_name, id_name, id_value)
+	if record1[id_name] == id_value:
+		return True
+	"""
+	def exists(self, table_name, id_name, id_value):
+		sql = "SELECT {} FROM {} WHERE {} = {} LIMIT 1".format(self.identifier(id_name), table_name, self.identifier(id_name), self.quote(id_value))
+		results = self.select_base(sql)
+		if len(results):
+			return True
+		return False
+	
+	"""
+	Returns this first field of the first record.
+	
+	value = dbh.select_value(sql)
+	"record1-field1"
+	"""
+	def select_value(self, sql, args=None):
+		results = self.select_base(sql, args)
+		if len(results):
+			values = list(results[0])
+			if len(values):
+				return values[0]
+		return None
+	
+	"""
+	Returns the first record as a list.
+	
+	record = dbh.select_as_list(sql)
+	[ record1 ]
+	"""
+	def select_as_list(self, sql, args=None):
+		results = self.select_base(sql, args)
+		if len(results):
+			return list(results[0])
+		else:
+			return None
+	
+	"""
+	Returns the first record as a hash.
+	
+	records = dbh.select_as_hash(sql)
+	{ record1 }
+	"""
+	def select_as_hash(self, sql, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		row = cursor.fetchone()
+		if not row:
+			return
+		columns = [desc[0] for desc in cursor.description]
+		cursor.close()
+		
+		record = {}
+		for i in range(len(columns)):
+			record[columns[i]] = row[i]
+		return record
+	
+	"""
+	Returns the first field of all records as a list.
+	
+	records = dbh.select_column(sql)
+	[ "record1-field1", "record2-field1", ... ]
+	"""
+	def select_column(self, sql, args=None):
+		results = self.select_base(sql, args)
+		records = []
+		for row in results:
+			records.append(list(row)[0])
+		return records
+	
+	"""
+	Returns the first field of all records as the hash value using the specified key as the hash key.
+	
+	records = dbh.select_column_as_hash(sql, key)
+	{
+		"hash_key1": "field1",
+		"hash_key2": "field1",
+		...
+	}
+	"""
+	def select_column_as_hash(self, sql, key, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		rows = cursor.fetchall()
+		columns = [desc[0] for desc in cursor.description]
+		cursor.close()
+		
+		records = {}
+		for row in rows:
+			record = {}
+			for i in range(len(columns)):
+				record[columns[i]] = row[i]
+			records[record[key]] = row[0]
+		return records
+	
+	"""
+	Returns the first field of all records as the hash value using the specified key as the hash key.
+	
+	records = dbh.select_column_as_hash_of_lists(sql, key)
+	{
+		"hash_key1": [ "record1_field1", "record2_field1", ... ],
+		"hash_key2": [ "record3_field1", "record4_field1", ... ],
+		...
+	}
+	"""
+	def select_column_as_hash_of_lists(self, sql, key, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		rows = cursor.fetchall()
+		columns = [desc[0] for desc in cursor.description]
+		cursor.close()
+		
+		records = {}
+		for row in rows:
+			record = {}
+			for i in range(len(columns)):
+				record[columns[i]] = row[i]
+			if record[key] not in records:
+				records[record[key]] = []
+			records[record[key]].append(row[0])
+		return records
+	
+	"""
+	Returns each record as a list in a list.
+	
+	records = dbh.select_as_list_of_lists(sql)
+	[ [ record1 ], [ record2 ], ... ]
+	"""
+	def select_as_list_of_lists(self, sql, args=None):
+		results = self.select_base(sql, args)
+		records = []
+		for row in results:
+			records.append(list(row))
+		return records
+	
+	"""
+	Returns each record as a hash in a list.
+	
+	records = dbh.select_as_list_of_hashes(sql)
+	[ { record1 }, { record2 }, ... ]
+	"""
+	def select_as_list_of_hashes(self, sql, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		rows = cursor.fetchall()
+		columns = [desc[0] for desc in cursor.description]
+		cursor.close()
+		
+		records = []
+		for row in rows:
+			record = {}
+			for i in range(len(columns)):
+				record[columns[i]] = row[i]
+			records.append(record)
+		return records
+	
+	"""
+	Returns each record as a hash in a hash using the specified key as the hash key.
+	hash key must be unique or records will be missed.
+	
+	records = dbh.select_as_hash_of_hashes(sql, key)
+	{
+		"hash_key1": { record1 },
+		"hash_key2": { record2 },
+		...
+	}
+	"""
+	def select_as_hash_of_hashes(self, sql, key, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		rows = cursor.fetchall()
+		columns = [desc[0] for desc in cursor.description]
+		cursor.close()
+		
+		records = {}
+		for row in rows:
+			record = {}
+			for i in range(len(columns)):
+				record[columns[i]] = row[i]
+			records[record[key]] = record
+		return records
+	
+	"""
+	Returns each record as a hash in a list under the main hash using the specified key as the main hash key.
+	hash key does not have to be unique.
+	
+	records = dbh.select_as_hash_of_lists(sql, key)
+	{
+		"id1": [ { record1a }, { record1b } ],
+		"id2": [ { record2a }, { record2b } ],
+		...
+	}
+	"""
+	def select_as_hash_of_lists(self, sql, key, args=None):
+		if self._log_level >= 7:
+			print(sql)
+		
+		cursor = self._conn.cursor()
+		if args:
+			cursor.execute(sql, tuple(args))
+		else:
+			cursor.execute(sql)
+		rows = cursor.fetchall()
+		columns = [desc[0] for desc in cursor.description]
+		cursor.close()
+		
+		records = {}
+		for row in rows:
+			record = {}
+			for i in range(len(columns)):
+				record[columns[i]] = row[i]
+			if record[key] not in records:
+				records[record[key]] = []
+			records[record[key]].append(record)
+		return records
+	
+	
+	# Change records
+	
+	"""
+	record = dbh.do(sql)
+	"""
+	def do(self, sql, args=None):
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			return 1
+		if self._log_level >= 6:
+			self.ui.body(sql)
+		
+		sql_parts = re.match(r'(\w+)', sql)
+		command = sql_parts.group(1)
+		
+		if self._readonly:
+			raise ConnectionError("Attempting {command} when set to readonly")
+		
+		cursor = self._conn.cursor()
+		if args:
+			try:
+				cursor.execute(sql, tuple(args))
+			except psycopg2.OperationalError as err:
+				print("Error: {}".format(err))
+				print("Query:", str(cursor.query))
+				cursor.close()
+				return False
+			except psycopg2.ProgrammingError as err:
+				print("Error: {}".format(err))
+				print("Query:", str(cursor.query))
+				cursor.close()
+				return False
+		else:
+			cursor.execute(sql)
+		rowcount = cursor.rowcount
+		self._conn.commit()
+		cursor.close()
+		return rowcount
+	
+	"""
+	num_of_inserts = dbh.insert(table_name, data)
+	num_of_inserts = dbh.insert(table_name, data, quote_keys=True, defaults={})
+	"""
+	def insert(self, table_name, data, quote_keys=False, defaults={}):
+		if type(data) is not list:
+			data = [data]
+		if not len(data):
+			return 0
+		
+		multi = True
+		key_list = []
+		insert_data = []
+		for record in data:
+			insert, errors = self.quote_for_table(table_name, record, check_nullable=True, defaults=defaults)
+			if len(errors):
+				raise ValueError("\n".join(errors))
+			insert_data.append(insert)
+			if not len(key_list):
+				key_list = sorted(insert.keys())
+			else:
+				record_key_list = sorted(insert.keys())
+				if key_list != record_key_list:
+					multi = False
+		
+		# Combined inserts
+		if multi:
+			# Quote keys
+			qkey_list = []
+			for key in key_list:
+				qkey = key
+				if quote_keys:
+					qkey = self.identifier(key)
+				qkey_list.append(qkey)
+			
+			# Quote and compile values
+			values_list = []
+			for record in insert_data:
+				value_list = []
+				for key in key_list:
+					value_list.append(record[key])
+				values_list.append("({})".format(', '.join(value_list)))
+			sql = "INSERT INTO {} ({}) VALUES {}".format(table_name, ', '.join(key_list), ', '.join(values_list))
+			response = self.do(sql)
+			return response
+		
+		# Individual inserts
+		cnt = 0
+		for record in insert_data:
+			qkey_list = []
+			value_list = []
+			for key in record.keys():
+				qkey = key
+				if quote_keys:
+					qkey = self.identifier(key)
+				qkey_list.append(qkey)
+				value_list.append(record[key])
+			
+			sql = "INSERT INTO {} ({}) VALUES ({})".format(table_name, ', '.join(qkey_list), ', '.join(value_list))
+			response = self.do(sql)
+			cnt += response
+		return cnt
+	
+	"""
+	num_of_updates = dbh.update(table_name, key_name, data)
+	num_of_updates = dbh.update(table_name, key_name, data, quote_keys=True)
+	"""
+	def update(self, table_name, key_name, data, quote_keys=False):
+		if type(data) is not list:
+			data = [data]
+		if not len(data):
+			return 0
+		
+		cnt = 0
+		for record in data:
+			update, errors = self.quote_for_table(table_name, record)
+			if len(errors):
+				raise ValueError("\n".join(errors))
+			
+			set_pairs = []
+			where_hash = {}
+			for key, value in update.items():
+				qkey = key
+				if quote_keys:
+					qkey = self.identifier(key)
+				if key == key_name:
+					where_hash[key] = record[key]
+				else:
+					set_pairs.append("{} = {}".format(qkey, update[key]))
+			if not len(where_hash) or not len(set_pairs):
+				return
+			
+			where_clause = self.make_where_clause(where_hash, should_quote_identifier=quote_keys)
+			if not where_clause:
+				continue
+			sql = "UPDATE {} SET {} WHERE {}".format(table_name, ', '.join(set_pairs), where_clause)
+			
+			cnt += self.do(sql)
+		return cnt
+	
+	"""
+	num_of_deletes = dbh.delete(table_name, {
+		"key": "value",
+		"key2": ["value2", "value3"],
+		"key3": {
+			"operator": "ilike",
+			"value": ["value4", "value5"]
+		}
+	})
+	num_of_deletes = dbh.delete(table_name, {
+		"key": "value"
+	}, conjunction='or', quote_keys=True)
+	"""
+	def delete(self, table_name, where_clause, conjunction='and', should_quote_identifier=False):
+		where_clause = self.make_where_clause(where_clause, conjunction=conjunction, should_quote_identifier=should_quote_identifier)
+		if not where_clause:
+			return 0
+		
+		sql = "DELETE FROM {} WHERE {}".format(table_name, where_clause)
+		
+		record = self.do(sql)
+		return record
+	
+	"""
+	num_of_inserts, num_of_updates = dbh.insert_update(table_name, key_name, data, quote_keys=True, defaults={})
+	num_of_inserts, num_of_updates = dbh.insert_update(
+		table_name,
+		key_name,
+		data,
+		quote_keys=False,
+		defaults={}
+	)
+	"""
+	def insert_update(self, table_name, key_name, data, quote_keys=False, defaults={}, insert_only=False):
+		if type(data) is not list:
+			data = [data]
+		if not len(data):
+			return 0
+		
+		key_list = common.to_list(data, key_name)
+		where_clause = self.make_where_clause({
+			key_name: key_list
+		}, should_quote_identifier=quote_keys)
+		if not where_clause:
+			return 0
+		sql = f"SELECT {key_name} FROM {table_name} WHERE {where_clause}"
+		existing_keys = self.select_column(sql)
+		
+		insert_records = []
+		update_records = []
+		for record in data:
+			if key_name not in record:
+				continue
+			# Update
+			if existing_keys and record[key_name] in existing_keys:
+				if not insert_only:
+					update_records.append(record)
+			# Insert
+			else:
+				insert_records.append(record)
+		
+		num_of_inserts = 0
+		if insert_records:
+			num_of_inserts = self.insert(table_name, insert_records, quote_keys=quote_keys, defaults=defaults)
+		num_of_updates = 0
+		if update_records:
+			num_of_updates = dbh.update(table_name, key_name, update_records, quote_keys=quote_keys)
+		return num_of_inserts, num_of_updates
+	
+	"""
+	num_of_inserts = dbh.insert_unique(table_name, key_name, data, quote_keys=True, defaults={})
+	"""
+	def insert_unique(self, table_name, key_name, data, quote_keys=False, defaults={}):
+		num_of_inserts, num_of_updates = self.insert_update(table_name, key_name, data, quote_keys=quote_keys, defaults=defaults, insert_only=True)
+		return num_of_inserts
+	
+	"""
+	Inserts missing records and deletes records that no longer exist.
+	num_of_inserts, num_of_deletes = dbh.sync_index_table(
+		table_name = table_name,
+		primary_key = field_name,
+		secondary_key = field_name,
+		data = list_of_hashes,
+		quote_keys=True,
+		defaults={}
+	)
+	"""
+	def sync_index_table(self, table_name, primary_key, secondary_key, data, quote_keys=False, defaults={}):
+		if type(data) is not list:
+			data = [data]
+		if not len(data):
+			return 0, 0
+		
+		# Read existing records
+		primary_ids = common.to_list(data, primary_key)
+		where_clause = self.make_where_clause({ primary_key: primary_ids })
+		existing_records = self.select_as_list_of_hashes(f"SELECT {primary_key}, {secondary_key} FROM {table_name} WHERE {where_clause}")
+		
+		# Find records to insert
+		insert_records = []
+		for record in data:
+			found = False
+			for existing in existing_records:
+				if record[primary_key] == existing[primary_key] and record[secondary_key] == existing[secondary_key]:
+					found = True
+			if not found:
+				insert_records.append(record)
+		num_of_inserts = self.insert(table_name, insert_records, quote_keys=quote_keys, defaults=defaults)
+		
+		# Find records to delete
+		num_of_deletes = 0
+		delete_records = []
+		for existing in existing_records:
+			found = False
+			for record in data:
+				if record[primary_key] == existing[primary_key] and record[secondary_key] == existing[secondary_key]:
+					found = True
+			
+			if not found:
+				delete_records.append({
+					primary_key: existing[primary_key],
+					secondary_key: existing[secondary_key]
+				})
+				num_of_deletes += self.delete(table_name, {
+					primary_key: existing[primary_key],
+					secondary_key: existing[secondary_key]
+				}, should_quote_identifier=quote_keys)
+		
+		return num_of_inserts, num_of_deletes
+	
+	
+	# Admin functions
 	
 	"""
 	record = dbh.create_table(table_name, create_sql)
@@ -891,7 +1106,6 @@ class DBH:
 	def drop_table(self, table_name):
 		sql = "DROP TABLE {}".format(table_name)
 		return self.do(sql)
-	
 	
 	
 	"""
