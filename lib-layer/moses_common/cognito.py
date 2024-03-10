@@ -117,7 +117,7 @@ class User:
 		return None
 	
 	"""
-	success = user.get_tokens_from_code(code, redirect_uri)
+	success, response = user.get_tokens_from_code(code, redirect_uri)
 	"""
 	def get_tokens_from_code(self, code, redirect_uri):
 		data = {
@@ -135,50 +135,63 @@ class User:
 				"Content-Type": "application/x-www-form-urlencoded"
 			},
 			"data": data
-		}, log_level=self.log_level, dry_run=self.dry_run)
+		}, log_level=7, dry_run=self.dry_run)
 		
 		if self.dry_run:
 			self.jwt = {
 				"access_token": "access-xxxxx",
-				"refresh_token": "refresh-xxxxx"
+				"refresh_token": "refresh-xxxxx",
+				"id_token": "id-xxxxx"
 			}
-			return True
+			return True, self.jwt
 		
 		if response_code != 200:
-			self.ui.error(f"Failed with error {response_code} {response_data}")
-			return None
+			return False, f"{response_code} {response_data}"
 		if type(response_data) is dict and 'access_token' in response_data:
 			self.jwt = response_data
-			return True
-		return False
+			return True, self.jwt
+		return False, "Unexpected response"
 	
 	
+	"""
+	success, response = user.refresh_access_token()
+	"""
 	def refresh_access_token(self):
-		if not jwt or 'refresh_token' not in jwt:
+		if not self.refresh_token:
 			return False, "No refresh token"
 		
 		data = {
-			"grant_type": "authorization_code",
-			"client_id": clientId,
-			"code": code,
-			"redirect_uri": "https://dev.artintelligence.gallery/latest"
+			"grant_type": "refresh_token",
+			"client_id": self.client_id,
+			"refresh_token": self.refresh_token
 		}
 		
 		response_code, response_data = common.get_url(self.token_url, {
 			"method": "POST",
+			"username": self.client_id,
+			"password": self.client_secret,
 			"headers": {
 				"Content-Type": "application/x-www-form-urlencoded"
 			},
 			"data": data
 		}, log_level=self.log_level, dry_run=self.dry_run)
 		
-# 		print("response_data {}: {}".format(type(response_data), response_data))
+		if self.dry_run:
+			self.access_token = "access-xxxxx-refreshed"
+			return True, {
+				"access_token": self.access_token,
+				"id_token": "id-xxxxx",
+				"token_type": "Bearer",
+				"expires_in": 3600
+			}
+		
+		print("response_data {}: {}".format(type(response_data), response_data))
 		if response_code != 200:
-			self.ui.error(f"Failed with error {response_code} {response_data}")
-			return None
-		if type(response_data) is dict and 'username' in response_data:
-			return response_data
-		return None
+			return False, f"{response_code} {response_data}"
+		if type(response_data) is dict and 'access_token' in response_data:
+			self.access_token = response_data['access_token']
+			return True, response_data
+		return False, "Unexpected response"
 	
 	"""
 	user_info = user.get_user_from_access_token()
@@ -192,7 +205,7 @@ class User:
 	"""
 	def get_user_from_access_token(self):
 		if not self.access_token:
-			return None
+			return False, "No access token"
 		response_code, response_data = common.get_url(self.user_info_url, {
 			"bearer_token": self.access_token,
 			"headers": {
@@ -207,14 +220,13 @@ class User:
 				"email": "qnqdrdyx2r@example.com",
 				"username": "username-xxxxx"
 			}
-			return self._info
+			return True, self._info
 		
 		if response_code != 200:
-			self.ui.error(f"Failed with error {response_code} {response_data}")
-			return None
-		if type(response_data) is dict and 'username' in response_data:
+			return False, f"{response_code} {response_data}"
+		elif type(response_data) is dict and 'username' in response_data:
 			self._info = response_data
-			return self._info
-		return None
+			return True, self._info
+		return False, "Unexpected response"
 	
 	

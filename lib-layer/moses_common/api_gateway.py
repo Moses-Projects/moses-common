@@ -77,6 +77,8 @@ class Request:
 				self.ui.body(f"query: {self.query}")
 			else:
 				self.ui.body(f"body: {self.body}")
+			if self.cookies:
+				self.ui.body(f"cookies: {self.cookies}")
 	
 	@property
 	def log_level(self):
@@ -216,10 +218,14 @@ class Request:
 	@property
 	def input(self):
 		input = {}
-		if self.query:
-			input = self.query
+		if self._event['multiValueQueryStringParameters']:
+			input = self._event['multiValueQueryStringParameters']
 		if self.body:
-			input = self.body
+			for key, value in self.body.items():
+				if key in input:
+					input['key'].extend(value)
+				else:
+					input[key] = value
 		return input
 	
 	@property
@@ -272,6 +278,18 @@ class Request:
 			return common.convert_value(self._event['body'])
 		return None
 	
+	@property
+	def cookies(self):
+		if self._event['headers'].get('Cookie'):
+			cookies = common.url_decode(self._event['headers']['Cookie'])
+			for key, value in cookies.items():
+				new_value = []
+				for element in value:
+					new_value.append(common.convert_value(element))
+				cookies[key] = new_value
+			return cookies
+		return None
+	
 	def get_cookie_string(self,
 		key,
 		value,
@@ -282,7 +300,8 @@ class Request:
 		expires=None,
 		max_age=1,
 		host_prefix=True,
-		secure_prefix=False
+		secure_prefix=False,
+		delete=False
 	):
 		
 		if type(value) is dict or type(value) is list:
@@ -293,7 +312,10 @@ class Request:
 		elif secure_prefix:
 			key = '__Secure-' + key
 		
-		cookie = key + '=' + value
+		if delete:
+			cookie = key + '='
+		else:
+			cookie = key + '=' + value
 		
 		if domain:
 			cookie += '; domain=' + domain
@@ -302,7 +324,11 @@ class Request:
 			cookie += '; path=' + path
 		
 		time_format = "%a, %d %b %Y %H:%M:%S %Z"
-		if max_age:
+		if delete:
+			dt = common.convert_string_to_datetime('1970-01-01T00:00:00Z')
+			cookie += '; expires=' + dt.strftime(time_format)
+		
+		elif max_age:
 			dt = common.get_dt_future(days=max_age)
 			cookie += '; expires=' + dt.strftime(time_format)
 		
