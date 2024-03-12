@@ -11,6 +11,7 @@ class Email:
 	"""
 	import moses_common.ses
 	email = moses_common.ses.Email(from_address_arn)
+	email = moses_common.ses.Email(from_address_arn, log_level=5, dry_run=False)
 	"""
 	def __init__(self, from_address_arn, log_level=5, dry_run=False):
 		self.log_level = log_level
@@ -115,59 +116,3 @@ class Email:
 			return response['MessageId']
 		return None
 	
-
-# def handler(event, context):
-# # 	print("Received event: " + json.dumps(event, indent=2))
-# 	messages = get_sns_messages(event)
-# 	for message in messages:
-# 		bounces = get_bounces(message)
-# 		found = False
-# 		if type(bounces) is list:
-# 			for bounce in bounces:
-# 				bounce["district"] = find_district(bounce["message"])
-# 				if not bounce["district"]:
-# 					bounce["district"] = find_district(bounce["email_address"])
-# 				session = {}
-# 				session['bounce'] = bounce
-# 				session['key'] = dd.get_ts()
-# 				dd.put_item(session)
-# 				found = True
-# 		if not found:
-# 			session = {}
-# 			session['message'] = message
-# 			session['key'] = dd.get_ts()
-# 			dd.put_item(session)
-# 	return "Completed bounce handling."
-# 
-# 
-# def get_sns_messages(event):
-# 	if type(event) is not dict or "Records" not in event or type(event['Records']) is not list or len(event['Records']) < 1:
-# 		raise AttributeError("handler event requires a Record")
-# 	messages = []
-# 	for record in event['Records']:
-# 		if type(record) is not dict or "EventSource" not in record or record["EventSource"] != "aws:sns" or "Sns" not in record or type(record["Sns"]) is not dict or "Message" not in record["Sns"]:
-# 			continue
-# 		if re.match("(\[|\{)", record["Sns"]["Message"]):
-# 			# json
-# 			message = json.loads(record["Sns"]["Message"])
-# 			messages.append(message)
-# 	
-# 	if len(messages):
-# 		return messages
-# 	raise ValueError("No valid SNS message found")
-# 
-# 
-# def get_bounces(message):
-# 	if "bounce" not in message or type(message["bounce"]) is not dict or "bouncedRecipients" not in message["bounce"] or type(message["bounce"]["bouncedRecipients"]) is not list:
-# 		return
-# 	bounces = []
-# 	for recip in message["bounce"]["bouncedRecipients"]:
-# 		if "diagnosticCode" in recip and "emailAddress" in recip:
-# 			bounce = {
-# 				"message": recip["diagnosticCode"],
-# 				"email_address": recip["emailAddress"]
-# 			}
-# 			bounces.append(bounce)
-# 	if len(bounces):
-# 		return bounces
-# 	return

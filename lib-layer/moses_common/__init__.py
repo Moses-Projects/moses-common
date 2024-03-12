@@ -212,7 +212,7 @@ json_object = common.parse_json(json_string)
 def parse_json(json_string):
 	if type(json_string) is not str:
 		return None
-	json_string = json_string.lstrip().rstrip()
+	json_string = json_string.strip()
 	if not re.match(r'(\{|\[)', json_string):
 		return None
 	try:
@@ -249,7 +249,7 @@ xml_object = common.parse_xml(xml_string)
 def parse_xml(xml_string):
 	if type(xml_string) is not str:
 		return None
-	xml_string = xml_string.lstrip().rstrip()
+	xml_string = xml_string.strip()
 	if not re.match(r'<', xml_string):
 		return None
 	try:
@@ -281,7 +281,7 @@ yaml_object = common.parse_yaml(yaml_string)
 def parse_yaml(yaml_string):
 	if type(yaml_string) is not str:
 		return None
-	yaml_string = yaml_string.lstrip().rstrip()
+	yaml_string = yaml_string.strip()
 	if not re.match(r'---', yaml_string):
 		return None
 	try:
