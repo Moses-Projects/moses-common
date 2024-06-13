@@ -5,6 +5,7 @@ from charset_normalizer import from_bytes
 import collections.abc
 import csv
 import datetime
+import decimal
 import gzip
 import json
 import math
@@ -15,6 +16,7 @@ import sys
 import unidecode
 import urllib.request
 import urllib.parse
+import uuid
 import xmltodict
 import yaml
 
@@ -137,6 +139,7 @@ def url_encode(hash):
 
 def url_decode(query_string):
 	return urllib.parse.parse_qs(query_string)
+
 
 ## File formats
 
@@ -658,6 +661,14 @@ def set_basic_args(event):
 	return dry_run, log_level, limit
 
 
+## UUID handling
+"""
+uuid = generate_uuid()
+"""
+def generate_uuid():
+	return str(uuid.uuid4())
+
+
 ## Text handling
 
 """
@@ -681,6 +692,7 @@ def normalize(text, strip_single_chars=True):
 
 def convert_to_camelcase(text):
 # 	text = re.sub(r'[_-](css|html|ics|ip|json|oid|php|rss|smtp|sql|ssl|url|utf|xml|xslt?)(_|$)', r'\1'.upper() + r'\2', text)
+	text = convert_to_str(text)
 	parts = text.split('_')
 	text = parts[0]
 	if len(parts) > 1:
@@ -689,12 +701,14 @@ def convert_to_camelcase(text):
 	return text
 
 def convert_to_kebabcase(text):
+	text = convert_to_str(text)
 	text = re.sub(r'[\s\.,_]+', '-', text.lower())
 	text = re.sub(r'[^a-z0-9-]', '', text)
 	text = re.sub(r'(^-|-$)', '', text)
 	return text
 
 def convert_to_snakecase(text):
+	text = convert_to_str(text)
 	text = re.sub(r'[\s\.,-]+', '_', text.lower())
 	text = re.sub(r'[^a-z0-9_]', '', text)
 	text = re.sub(r'(^_|_$)', '', text)
@@ -775,6 +789,35 @@ def conjunction(orig_words, conj='and'):
 	elif len(words) > 2:
 		return ', '.join(words[:len(words)-1]) + ',' + conj + words[-1]
 
+def get_first_matching_words(titles):
+	titles = titles.copy()
+	first = titles.pop(0)
+	first_words = re.split(r' +', first)
+	title_min = 1024
+	for title in titles:
+		word_min = 0
+		title_words = re.split(r' +', title)
+		for index in range(len(first_words)):
+			if index >= len(title_words) or first_words[index].lower() != title_words[index].lower():
+				break
+			word_min += 1
+		if word_min < title_min:
+			title_min = word_min
+	matching_words = ' '.join(first_words[0:title_min])
+	return matching_words
+
+def add_ordinal_suffix(number):
+	number = str(number)
+	if re.search(r'1[1-3]$', number):
+		return number + 'th'
+	elif re.search(r'1$', number):
+		return number + 'st'
+	elif re.search(r'2$', number):
+		return number + 'nd'
+	elif re.search(r'3$', number):
+		return number + 'rd'
+	return number + 'th'
+
 
 ## Number handling
 
@@ -808,48 +851,87 @@ def flatten_hash(input, upper_key=None, inner_key=None):
 			output[new_key] = value
 	return output
 
-def update_hash(d, u):
-	for k, v in u.items():
-		if isinstance(v, collections.abc.Mapping):
-			d[k] = update_hash(d.get(k, {}), v)
+"""
+Shallow merge of a hash.
+common.merge_hash(target_hash, source_hash)
+"""
+def merge_hash(target, source):
+	for key, value in source.items():
+		target[key] = value
+	return target
+
+"""
+Does a deep merge of a hash.
+common.update_hash(target_hash, source_hash)
+"""
+def update_hash(target, source):
+	for key, value in source.items():
+		if isinstance(value, collections.abc.Mapping):
+			target[key] = update_hash(target.get(key, {}), value)
 		else:
-			d[k] = v
-	return d
+			target[key] = value
+	return target
 
 
 ## List handling
 """
 Converts what it can into a list. "unique=True" makes output list unique.
 
+## Without "key" - puts what you give it in a list
+# Single value
 list = to_list(str or int or float or bool)
 	[str or int or float or bool]
+
+# List returns the same list
 list = to_list(input_list)
 	input_list
+
+# Hash returns a list with the hash as the only element
 list = to_list(hash)
-	[value1, value2, ...]
-list = to_list(list_of_hashes, key)
-	[hash1_key_value, hash2_key_value, ...]
+	[hash]
+
+## With "key" - pulls values from what you give it to put in a list
+# Hash returns value of "key" in hash
+list = to_list(hash)
+	[value]
+
+# Hash of hashes returns value of "key" in hash values that are hashes
 list = to_list(hash_of_hashes, key)
+	[hash1_key_value, hash2_key_value, ...]
+
+# List of hashes returns value of "key" from hashes
+list = to_list(list_of_hashes, key)
 	[hash1_key_value, hash2_key_value, ...]
 """
 def to_list(input=None, key=None, unique=False):
 	output = []
+	# hashes inside a list or hash
 	if key:
+		# list of hashes containing key
 		if type(input) is list:
 			for item in input:
 				if type(item) is dict and key in item:
 					output.append(item[key])
-		if type(input) is dict:
-			if key:
+		# hash
+		elif type(input) is dict:
+			# hash with key
+			if key in input:
+				output.append(input[key])
+			# hash with hashes containing key
+			else:
 				for k, item in input.items():
 					if type(item) is dict and key in item:
 						output.append(item[key])
-			else:
-				output = list(input.values())
-	elif type(input) is str or type(input) is int or type(input) is float:
+	# hash without key
+	elif type(input) is dict:
+		output.append(input)
+	# single value
+	elif type(input) is str or type(input) is int or type(input) is float or type(input) is bool:
 		output = [input]
+	# already a list
 	elif type(input) is list:
 		output = input
+	
 	if unique:
 		return unique_list(output)
 	return output
@@ -1039,6 +1121,8 @@ def convert_to_int(input):
 		return 0
 	if type(input) is int:
 		return input
+	if isinstance(input, decimal.Decimal):
+		input = str(input)
 	if type(input) is float:
 		input = str(input)
 	if type(input) is str:
@@ -1107,6 +1191,16 @@ def convert_to_bool(input):
 	return None
 
 """
+integer = common.convert_to_str(input)
+* Converts None, booleans, integers, strings, and floats to strings
+  Basically, str() but converts None to ''
+"""
+def convert_to_str(input):
+	if input is None:
+		return ''
+	return str(input)
+
+"""
 boolean = common.is_uuid(input)
 """
 def is_uuid(input):
@@ -1114,17 +1208,36 @@ def is_uuid(input):
 		return True
 	return False
 
+"""
+boolean = common.is_doc_id(input)
+"""
+def is_doc_id(input):
+	if type(input) is str and re.search(r'^[a-zA-Z0-9]{22}$', input):
+		return True
+	return False
+
+"""
+boolean = common.is_hash_list(input)
+"""
+def is_hash_list(input):
+	if type(input) is not list:
+		return False
+	for item in input:
+		if type(item) is not dict:
+			return False
+	return True
+
 
 ## Date/time formatting
 
-# def get_datetime_from_string(input):
-# 	if is_datetime(input):
-# 		return input
-# 	if type(input) is str:
-# 		dt = datetime.datetime.fromisoformat(input)
-# 		if dt:
-# 			return dt
-# 	return None
+def get_datetime_from_string(input):
+	if is_datetime(input):
+		return input
+	if type(input) is str:
+		dt = datetime.datetime.fromisoformat(input)
+		if dt:
+			return dt
+	return None
 
 def get_dt_now(format=None):
 	if format == 'date':
@@ -1178,7 +1291,6 @@ def get_date_string(input=None):
 	return f"{month} {day}, {year}"
 
 
-
 def get_epoch(dt=None):
 	if dt:
 		dt = convert_string_to_datetime(dt)
@@ -1199,6 +1311,7 @@ def get_epoch_ms(dt=None):
 """
 output, errors = common.check_input([
 	[ "key_name", "str", True, 1, 16],
+	[ "key_name", "str", ['value1', 'value2', ...]],
 	[ "key_name2", "int", False, 1],
 	[ "key_name3", "dict", [
 		[ "key_name4", "str", True, 1, 16],
@@ -1207,7 +1320,7 @@ output, errors = common.check_input([
 ], input_structure)
 * [ key_name, field_type, is_required, min_length, max_length ]
 """
-def check_input(field_map, body):
+def check_input(field_map, body, allow_none=False, remove_none=False):
 	output = {}
 	errors = []
 	for field in field_map:
@@ -1231,15 +1344,19 @@ def check_input(field_map, body):
 		if ftype == 'bool':
 			ftype = 'boolean'
 		
-		if key not in body:
+		if key not in body or body[key] is None:
 			if (type(required) is list or required):
 				errors.append("'{}' is required".format(key))
 			continue
 		if type(required) is list:
 			if body[key] not in required:
 				errors.append("'{}' must be one of '{}'".format(key, "', '".join(required)))
+		if remove_none and body[key] is None:
+			continue
 		
-		if ftype == "str":
+		if allow_none and body[key] is None:
+			pass
+		elif ftype == "str":
 			if type(body[key]) is not str:
 				errors.append("'{}' must be a string".format(key))
 				continue
@@ -1259,6 +1376,14 @@ def check_input(field_map, body):
 			if type(body[key]) is not list:
 				errors.append("'{}' must be a list/array".format(key))
 				continue
+		elif ftype == "uuid":
+			if not is_uuid(body[key]):
+				errors.append("'{}' must be a uuid".format(key))
+				continue
+		elif ftype == "doc_id":
+			if not is_doc_id(body[key]):
+				errors.append("'{}' must be a doc_id".format(key))
+				continue
 		
 		if sub_map and ftype in ['str', 'int']:
 			if body[key] not in sub_map:
@@ -1266,21 +1391,29 @@ def check_input(field_map, body):
 				continue
 			output[key] = str(body[key])
 		elif ftype == "str":
-			if min_length and len(body[key]) < min_length:
+			if min_length and (body[key] is None or len(body[key]) < min_length):
 				errors.append("'{}' should be at least {} characters long".format(key, min_length))
 				continue
-			if max_length and len(body[key]) > max_length:
+			if body[key] is None or (max_length and len(body[key]) > max_length):
 				errors.append("'{}' should be less than {} characters long".format(key, max_length))
 				continue
-			output[key] = str(body[key])
+			if allow_none and body[key] is None:
+				output[key] = None
+			else:
+				output[key] = str(body[key])
 		elif ftype == "int":
-			if min_length and int(body[key]) < min_length:
+			if min_length and (body[key] is None or int(body[key]) < min_length):
 				errors.append("'{}' should be greater than {}".format(key, min_length))
 				continue
-			if max_length and int(body[key]) > max_length:
+			if body[key] is None or (max_length and int(body[key]) > max_length):
 				errors.append("'{}' should be less than {}".format(key, max_length))
 				continue
-			output[key] = convert_to_int(body[key])
+			if allow_none and body[key] is None:
+				output[key] = None
+			else:
+				output[key] = convert_to_int(body[key])
+		elif allow_none and body[key] is None:
+			output[key] = None
 		elif ftype == "boolean":
 			output[key] = convert_to_bool(body[key])
 		elif ftype == "dict" or ftype == "list":
@@ -1292,6 +1425,8 @@ def check_input(field_map, body):
 					errors.extend(sub_errors)
 			else:
 				output[key] = body[key]
+		elif ftype in ["uuid", "doc_id"]:
+			output[key] = str(body[key])
 	return output, errors
 		
 
@@ -1322,10 +1457,27 @@ def normalize_log_level(value):
 
 # Serverless functions
 
+# Invoked using Lambda
+def is_lambda():
+	if 'LAMBDA_TASK_ROOT' in os.environ:
+		return True
+	return False
+
+# Called as a script
+def is_cli():
+	return not is_lambda()
+
+# Running locally on a client machine
 def is_local():
-	if 'LAMBDA_TASK_ROOT' not in os.environ or ('IS_LOCAL' in os.environ and os.environ['IS_LOCAL'] == 'true'):
+	if is_cli() or os.environ.get('IS_LOCAL') == 'true':
 		if 'USER' in os.environ and os.environ['USER'] != 'ubuntu':
 			return True
+	return False
+
+# Running at AWS
+def is_aws():
+	if not is_local():
+		return True
 	return False
 
 
@@ -1491,7 +1643,7 @@ boolean = common.is_success(response)
 """
 def is_success(response):
 	if type(response) is dict and 'ResponseMetadata' in response:
-		if response['ResponseMetadata'].get('HTTPStatusCode') == 200 or response['ResponseMetadata'].get('HTTPStatusCode') == 204:
+		if response['ResponseMetadata'].get('HTTPStatusCode') >= 200 and response['ResponseMetadata'].get('HTTPStatusCode') < 300:
 			return True
 	return False
 

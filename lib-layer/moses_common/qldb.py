@@ -24,9 +24,10 @@ class QLDB:
 		6: All DO statements
 		7: All SELECT and DO statements
 	"""
-	def __init__(self, ledger_name, log_level=5, dry_run=False):
-		self._dry_run = dry_run
+	def __init__(self, ledger_name, readonly=False, log_level=5, dry_run=False):
+		self.dry_run = dry_run
 		self.log_level = log_level
+		self.readonly = readonly
 		
 		# Configure retry limit to 3
 		self.retry_config = RetryConfig(retry_limit=3)
@@ -37,13 +38,15 @@ class QLDB:
 		except:
 			raise ConnectionError("Unable to connect to ledger {}".format(ledger_name))
 		
-		self._now = datetime.datetime.utcnow()
-		self._ui = moses_common.ui.Interface()
+		self._qldb_tables = self.get_sql_as_list("SELECT * FROM information_schema.user_tables WHERE status = 'ACTIVE'", [])
+		
+		self.now = datetime.datetime.utcnow()
+		self.ui = cg_shared.ui.Interface()
 		
 	
 	def _connect_to_qldb(self):
 		if not self._qldb:
-			return moses_common.qldb.QLDB(self._ledger_name)
+			return cg_shared.qldb.QLDB(self._ledger_name)
 	
 	@property
 	def log_level(self):
@@ -59,53 +62,80 @@ class QLDB:
 	
 	@property
 	def tables(self):
-		tables = []
-		for table in self._qldb.list_tables():
-			tables.append(table)
+		tables = common.to_list(self._qldb_tables, 'name')
 		return tables
 	
 	"""
 	tables = qldb.list_tables()
 	"""
 	def list_tables(self):
-		tables = []
-		for table in self._qldb.list_tables():
-			tables.append(table)
-		return tables
+		return self.tables
 	
-	def recreate_table(self, table_name):
-		self._qldb.execute_lambda(lambda executor: self.recreate_table_execute(executor, table_name))
-	
-	def recreate_table_execute(self, transaction_executor, table_name):
-		self.drop_table_execute(transaction_executor, table_name)
-		self.create_table_execute(transaction_executor, table_name)
+	def is_table(self, table_name):
+		if table_name in self.tables:
+			return True
+		return False
 	
 	def create_table(self, table_name):
-		self._qldb.execute_lambda(lambda executor: self.create_table_execute(executor, table_name))
+		return self._qldb.execute_lambda(lambda executor: self.create_table_execute(executor, table_name))
 	
 	def create_table_execute(self, transaction_executor, table_name):
+		if self.readonly:
+			raise ConnectionError("Attempting to create table when set to readonly")
 		sql = "CREATE TABLE {}".format(table_name)
-		print(sql)
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			return 'xxx'
 		cursor = transaction_executor.execute_statement(sql)
 		for doc in cursor:
 			return doc['tableId']
 	
+	"""
+	indexes = qldb.list_indexes(table_name)
+	"""
+	def list_indexes(self, table_name):
+		for table in self._qldb_tables:
+			if table['name'] == table_name:
+				indexes = []
+				if table.get('indexes'):
+					for index in table['indexes']:
+						if index.get('status') == 'ONLINE':
+							indexes.append(re.sub(r'(^\[|\]$)', '', index.get('expr', '')))
+				return indexes
+		return None
+	
+	def is_index(self, table_name, field_name):
+		indexes = self.list_indexes(table_name)
+		if not indexes:
+			return False
+		if field_name in indexes:
+			return True
+		return False
+	
 	def create_index(self, table_name, field_name):
-		self._qldb.execute_lambda(lambda executor: self.create_index_execute(executor, table_name, field_name))
+		return self._qldb.execute_lambda(lambda executor: self.create_index_execute(executor, table_name, field_name))
 	
 	def create_index_execute(self, transaction_executor, table_name, field_name):
+		if self.readonly:
+			raise ConnectionError("Attempting to create index when set to readonly")
 		sql = "CREATE INDEX ON {}({})".format(table_name, field_name)
-		print(sql)
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			return 'xxx'
 		cursor = transaction_executor.execute_statement(sql)
 		for doc in cursor:
 			return doc['tableId']
 	
 	def drop_table(self, table_name):
-		self._qldb.execute_lambda(lambda executor: self.drop_table_execute(executor, table_name))
+		return self._qldb.execute_lambda(lambda executor: self.drop_table_execute(executor, table_name))
 	
 	def drop_table_execute(self, transaction_executor, table_name):
+		if self.readonly:
+			raise ConnectionError("Attempting to drop table when set to readonly")
 		sql = "DROP TABLE {}".format(table_name)
-		print(sql)
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			return 'xxx'
 		cursor = transaction_executor.execute_statement(sql)
 		for doc in cursor:
 			return doc['tableId']
@@ -184,7 +214,8 @@ class QLDB:
 		results = self.qldb_get_records(executor, table_name, doc_id_list, should_get_full_record)
 		records = {}
 		for doc in results:
-			records[doc['doc_id']] = self.deionize(doc)
+			doc = self.deionize(doc)
+			records[doc['doc_id']] = doc
 		return records
 	
 	def qldb_get_records(self, transaction_executor, table_name, doc_id_list, should_get_full_record=False):
@@ -195,7 +226,7 @@ class QLDB:
 			sql = "SELECT * FROM _ql_committed_{} BY doc_id WHERE doc_id IN ({})".format(table_name, list_string)
 		else:
 			sql = "SELECT * FROM {} BY doc_id WHERE doc_id IN ({})".format(table_name, list_string)
-		if self._log_level >= 7:
+		if self.log_level >= 7:
 			print(sql)
 			print(doc_id_list)
 		cursor = transaction_executor.execute_statement(sql, *doc_id_list)
@@ -209,11 +240,11 @@ class QLDB:
 	record = qldb.get_record_by_id(table_name, id)
 	record = qldb.execute_lambda(lambda executor: qldb.exe_get_record_by_id(executor, table_name, id))
 	
-	list = qldb.get_records_by_id_as_list(table_name, doc_id_list)
-	list = qldb.execute_lambda(lambda executor: qldb.exe_get_records_by_id_as_list(executor, table_name, doc_id_list))
+	list = qldb.get_records_by_id_as_list(table_name, id_list)
+	list = qldb.execute_lambda(lambda executor: qldb.exe_get_records_by_id_as_list(executor, table_name, id_list))
 	
-	hash = qldb.get_records_by_id_as_hash(table_name, doc_id_list)
-	hash = qldb.execute_lambda(lambda executor: qldb.exe_get_records_by_id_as_hash(executor, table_name, doc_id_list))
+	hash = qldb.get_records_by_id_as_hash(table_name, id_list)
+	hash = qldb.execute_lambda(lambda executor: qldb.exe_get_records_by_id_as_hash(executor, table_name, id_list))
 	
 	ion_records = qldb.execute_lambda(lambda executor: qldb.qldb_get_records_by_id(executor, table_name, id))
 	"""
@@ -238,14 +269,15 @@ class QLDB:
 	def get_records_by_id_as_hash(self, table_name, id_list, should_get_full_record=False):
 		return self._qldb.execute_lambda(lambda executor: self.exe_get_records_by_id_as_hash(executor, table_name, id_list, should_get_full_record))
 	
-	def exe_get_records_by_id_as_hash(self, executor, table_name, doc_id_list, should_get_full_record=False):
-		results = self.qldb_get_records_by_id(executor, table_name, doc_id_list, should_get_full_record)
+	def exe_get_records_by_id_as_hash(self, executor, table_name, id_list, should_get_full_record=False):
+		results = self.qldb_get_records_by_id(executor, table_name, id_list, should_get_full_record)
 		records = {}
 		for doc in results:
+			doc = self.deionize(doc)
 			if should_get_full_record:
-				records[doc['data']['id']] = self.deionize(doc)
+				records[doc['data']['id']] = doc
 			else:
-				records[doc['id']] = self.deionize(doc)
+				records[doc['id']] = doc
 		return records
 	
 	def qldb_get_records_by_id(self, transaction_executor, table_name, id_list, should_get_full_record=False):
@@ -256,7 +288,7 @@ class QLDB:
 			sql = "SELECT * FROM _ql_committed_{} BY doc_id WHERE data.id IN ({})".format(table_name, list_string)
 		else:
 			sql = "SELECT * FROM {} BY doc_id WHERE id IN ({})".format(table_name, list_string)
-		if self._log_level >= 7:
+		if self.log_level >= 7:
 			print(sql)
 			print(id_list)
 		cursor = transaction_executor.execute_statement(sql, *id_list)
@@ -316,13 +348,14 @@ class QLDB:
 		results = self.qldb_get_sql(executor, sql, arg_list)
 		records = {}
 		for doc in results:
-			records[doc[key_name]] = self.deionize(doc)
+			doc = self.deionize(doc)
+			records[doc[key_name]] = doc
 		return records
 	
 	def qldb_get_sql(self, transaction_executor, sql, arg_list):
 		if type(arg_list) is not list:
 			arg_list = [arg_list]
-		if self._log_level >= 7:
+		if self.log_level >= 7:
 			print(sql)
 			print(arg_list)
 		cursor = transaction_executor.execute_statement(sql, *arg_list)
@@ -334,6 +367,7 @@ class QLDB:
 	
 	"""
 	doc_id = qldb.insert_record(table_name, item)
+	doc_id = qldb.insert_records(table_name, item_list)
 	doc_id = qldb.execute_lambda(lambda executor: qldb.exe_insert_records(executor, table_name, item))
 	ion_doc_id = qldb.execute_lambda(lambda executor: qldb.qldb_insert_records(executor, table_name, item))
 	"""
@@ -350,21 +384,23 @@ class QLDB:
 		return None
 	
 	def qldb_insert_records(self, transaction_executor, table_name, item):
+		if self.readonly:
+			raise ConnectionError("Attempting to insert records when set to readonly")
 		sql = "INSERT INTO {} ?".format(table_name)
-		if self._dry_run:
-			self._ui.dry_run(sql)
-			self._ui.dry_run(item)
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			self.ui.dry_run(item)
 			return 'xxx'
-		if self._log_level >= 7:
+		if self.log_level >= 7:
 			print(sql)
 			print(item)
 		cursor = transaction_executor.execute_statement(sql, item)
 		for doc in cursor:
 			if 'documentId' in doc:
-				if self._log_level >= 6:
+				if self.log_level >= 6:
 					print("QLDB inserted {} into {}".format(doc['documentId'], table_name))
 				return doc['documentId']
-		if self._log_level >= 6:
+		if self.log_level >= 6:
 			print("QLDB insert failed on", table_name)
 		return 
 	
@@ -396,6 +432,8 @@ class QLDB:
 		return None
 	
 	def qldb_update_records(self, transaction_executor, table_name, doc_id_list, item):
+		if self.readonly:
+			raise ConnectionError("Attempting to update records when set to readonly")
 # 		print("item {}: {}".format(type(item), item))
 		is_multiple = True
 		if type(doc_id_list) is not list:
@@ -418,7 +456,7 @@ class QLDB:
 				qvalue = str(value)
 			elif type(value) is str:
 				qvalue = "'{}'".format(value)
-			elif type(value) is type(self._now):
+			elif type(value) is type(self.now):
 				qvalue = "'{}'".format(value.isoformat())
 			elif type(value) is list or type(value) is dict:
 				args.append(value)
@@ -430,13 +468,13 @@ class QLDB:
 		doc_id_list = args + doc_id_list
 		
 		sql = "UPDATE {} BY doc_id SET {} WHERE doc_id IN ({})".format(table_name, ', '.join(set_list), list_string)
-		if self._dry_run:
-			self._ui.dry_run(sql)
-			self._ui.dry_run(doc_id_list)
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			self.ui.dry_run(doc_id_list)
 			if is_multiple:
 				return ['xxx']
 			return 'xxx'
-		if self._log_level >= 7:
+		if self.log_level >= 7:
 			print(sql)
 			print(doc_id_list)
 		cursor = transaction_executor.execute_statement(sql, *doc_id_list)
@@ -444,17 +482,17 @@ class QLDB:
 			return_doc_ids = []
 			for doc in cursor:
 				if 'documentId' in doc:
-					if self._log_level >= 6:
+					if self.log_level >= 6:
 						print("QLDB updated {} in {}".format(doc['documentId'], table_name))
 					return_doc_ids.append(doc['documentId'])
 			return return_doc_ids
 		else:
 			for doc in cursor:
 				if 'documentId' in doc:
-					if self._log_level >= 6:
+					if self.log_level >= 6:
 						print("QLDB updated {} in {}".format(doc['documentId'], table_name))
 					return doc['documentId']
-		if self._log_level >= 6:
+		if self.log_level >= 6:
 			print("QLDB update failed on", table_name)
 		return 
 	

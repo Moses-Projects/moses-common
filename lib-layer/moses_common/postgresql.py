@@ -156,10 +156,10 @@ class DBH:
 		return qsearch
 	
 	"""
-	quoted_data, errors = dbh.quote_for_table(table_name, data)
-	quoted_data, errors = dbh.quote_for_table(table_name, data, check_nullable=True, defaults={})
+	quoted_data, errors = dbh.quote_for_table(table_name, data, schema=None)
+	quoted_data, errors = dbh.quote_for_table(table_name, data, schema=None, check_nullable=True, defaults={})
 	"""
-	def quote_for_table(self, table_name, data, check_nullable=False, defaults={}):
+	def quote_for_table(self, table_name, data, schema=None, check_nullable=False, defaults={}):
 		"""
 		boolean - convert_to_bool()
 		date - 
@@ -211,7 +211,8 @@ class DBH:
 			txid_snapshot
 			xml
 		"""
-		columns = self.get_column_info(table_name)
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		columns = self.get_column_info(table_name, schema=schema)
 		insert = {}
 		errors = []
 		
@@ -238,21 +239,21 @@ class DBH:
 			
 			if column_name not in data:
 				if check_nullable and required and not column['column_default'] and not column['identity_generation']:
-					errors.append(f"'{column_name}' is required")
-					raise TypeError(f"'{column_name}' is required")
+					errors.append(f"'{schema}.{table_name}.{column_name}' is required")
+					raise TypeError(f"'{schema}.{table_name}.{column_name}' is required")
 				continue
 			
 			value = data[column_name]
 			if value is None:
 				if check_nullable and required:
 					if not column['column_default']:
-						errors.append(f"'{column_name}' can't be NULL")
+						errors.append(f"'{column_name}' can't be NULL (table '{schema}.{table_name}')")
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif data_type == 'boolean':
 				value = common.convert_to_bool(value)
 				if value is None:
-					errors.append(f"'{column_name}' cannot convert to a boolean")
+					errors.append(f"'{column_name}' cannot convert to a boolean (table '{schema}.{table_name}')")
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif re.match(r'date', data_type):
@@ -266,13 +267,13 @@ class DBH:
 			elif data_type in ['decial', 'numeric', 'double precision']:
 				value = common.convert_to_float(value)
 				if value is None:
-					errors.append(f"'{column_name}' cannot convert to an float")
+					errors.append(f"'{column_name}' cannot convert to a float (table '{schema}.{table_name}')")
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif data_type in ['integer', 'smallint', 'bigint']:
 				value = common.convert_to_int(value)
 				if value is None:
-					errors.append(f"'{column_name}' cannot convert to an integer")
+					errors.append(f"'{column_name}' cannot convert to an integer (table '{schema}.{table_name}')")
 					continue
 				if data_type == 'smallint' and (value < -32768 or value > 32767):
 					errors.append(f"'{column_name}' out of range")
@@ -283,7 +284,7 @@ class DBH:
 				if re.match(r'uuid_generate', value):
 					value = self.generate_uuid()
 				if column['character_maximum_length'] and len(value) > column['character_maximum_length']:
-					errors.append(f"'{column_name}' out of range")
+					errors.append(f"'{column_name}' out of range (table '{schema}.{table_name}')")
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif re.match(r'timestamp', data_type):
@@ -309,12 +310,12 @@ class DBH:
 						insert[column_name] = self._quote_single_value(time_obj.isoformat())
 			elif data_type == 'uuid':
 				if not common.is_uuid(value):
-					errors.append(f"'{column_name}' is not a valid uuid")
+					errors.append(f"'{column_name}' is not a valid uuid (table '{schema}.{table_name}')")
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif data_type == 'array':
 				if type(value) is not list:
-					errors.append(f"'{column_name}' is not an array")
+					errors.append(f"'{column_name}' is not an array (table '{schema}.{table_name}')")
 					continue
 				new_array = []
 				if column['udt_name'] == '_text':
@@ -322,10 +323,10 @@ class DBH:
 						new_array.append(self._quote_single_value(str(element)))
 					value = 'ARRAY[' + ','.join(new_array) + ']::text[]'
 				else:
-					errors.append(f"'{column_name}' array type of {column['udt_name']} is not supported")
+					errors.append(f"'{column_name}' array type of {column['udt_name']} is not supported (table '{schema}.{table_name}')")
 				insert[column_name] = value
 			else:
-				errors.append(f"'{column_name}' data type of {data_type} is not supported")
+				errors.append(f"'{column_name}' data type of {data_type} is not supported (table '{schema}.{table_name}')")
 		
 		return insert, errors
 	
@@ -388,6 +389,7 @@ class DBH:
 		return ''
 	
 	"""
+	where_clause = dbh.make_where_clause({ "key": "value" })
 	where_clause = dbh.make_where_clause({
 		"key": "value",
 		"key2": ["value2", "value3"],
@@ -395,7 +397,7 @@ class DBH:
 			"operator": "ilike",
 			"value": ["value4", "value5"]
 		}
-	}, conjunction)
+	}, conjunction='and')
 	"""
 	def make_where_clause(self, args, conjunction='and', should_quote_identifier=False):
 		where_sql_list = []
@@ -415,7 +417,7 @@ class DBH:
 						operator = value['operator']
 					where_sql_list.append(self.make_where_conditional(key, value['value'], operator, should_quote_identifier))
 				else:
-					where_sql_list.append(self.make_where_conditional(key, value))
+					where_sql_list.append(self.make_where_conditional(key, value, should_quote_identifier=should_quote_identifier))
 		return self.join_where_conditionals(where_sql_list, conjunction)
 		
 	"""
@@ -542,16 +544,11 @@ class DBH:
 	# Get table info
 	
 	"""
-	column_hash = dbh.get_column_info(table_name)
+	column_hash = dbh.get_column_info(table_name, schema=None)
 	"""
-	def get_column_info(self, table_name):
-		schema = 'public'
-		table = table_name
-		if re.search(r'\.', table_name):
-			parts = table_name.split('.')
-			schema = parts[0]
-			table = parts[1]
-		sql = f"SELECT * FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table}'"
+	def get_column_info(self, table_name, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		sql = f"SELECT * FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table_name}'"
 		return self.select_as_hash_of_hashes(sql, 'column_name')
 	
 	
@@ -574,16 +571,41 @@ class DBH:
 		return list(records)
 	
 	"""
-	boolean = dbh.exists(table_name, id_name, id_value)
+	boolean = dbh.exists(table_name, id_name, id_value, schema=None)
 	if record1[id_name] == id_value:
 		return True
 	"""
-	def exists(self, table_name, id_name, id_value):
-		sql = "SELECT {} FROM {} WHERE {} = {} LIMIT 1".format(self.identifier(id_name), table_name, self.identifier(id_name), self.quote(id_value))
+	def exists(self, table_name, id_name, id_value, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		sql = "SELECT {} FROM {}.{} WHERE {} = {} LIMIT 1".format(self.identifier(id_name), schema, table_name, self.identifier(id_name), self.quote(id_value))
 		results = self.select_base(sql)
 		if len(results):
 			return True
 		return False
+	
+	"""
+	Returns the first record matching the id name and value.
+	
+	record = dbh.select_record(table_name, id_name, id_value, schema=None)
+	"""
+	def select_record(self, table_name, id_name, id_value, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		sql = "SELECT * FROM {}.{} WHERE {} = {} LIMIT 1".format(schema, table_name, self.identifier(id_name), self.quote(id_value))
+		return self.select_as_hash(sql)
+	
+	"""
+	Returns the latest record on the sort field.
+	record = dbh.select_latest(table_name, sort_name, schema=None)
+	
+	Returns the latest record on the sort field matching the name and value.
+	record = dbh.select_latest(table_name, sort_name, id_name=None, id_value=None, schema=None)
+	"""
+	def select_latest(self, table_name, sort_name, id_name=None, id_value=None, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		sql = f"SELECT * FROM {schema}.{table_name} WHERE {self.identifier(sort_name)} = (SELECT MAX({self.identifier(sort_name)}) FROM {schema}.{table_name}) LIMIT 1"
+		if id_name and id_value:
+			sql = f"SELECT * FROM {schema}.{table_name} WHERE {self.identifier(id_name)} = {self.quote(id_value)} AND {self.identifier(sort_name)} = (SELECT MAX({self.identifier(sort_name)}) FROM {schema}.{table_name}) LIMIT 1"
+		return self.select_as_hash(sql)
 	
 	"""
 	Returns this first field of the first record.
@@ -834,8 +856,11 @@ class DBH:
 		if self._log_level >= 6:
 			self.ui.body(sql)
 		
+		sql = sql.strip()
+		command = 'do'
 		sql_parts = re.match(r'(\w+)', sql)
-		command = sql_parts.group(1)
+		if sql_parts:
+			command = sql_parts.group(1)
 		
 		if self._readonly:
 			raise ConnectionError("Attempting {command} when set to readonly")
@@ -863,19 +888,20 @@ class DBH:
 	
 	"""
 	num_of_inserts = dbh.insert(table_name, data)
-	num_of_inserts = dbh.insert(table_name, data, quote_keys=True, defaults={})
+	num_of_inserts = dbh.insert(table_name, data, schema=None, quote_keys=True, defaults={})
 	"""
-	def insert(self, table_name, data, quote_keys=False, defaults={}):
+	def insert(self, table_name, data, schema=None, quote_keys=False, defaults={}):
 		if type(data) is not list:
 			data = [data]
 		if not len(data):
 			return 0
 		
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		multi = True
 		key_list = []
 		insert_data = []
 		for record in data:
-			insert, errors = self.quote_for_table(table_name, record, check_nullable=True, defaults=defaults)
+			insert, errors = self.quote_for_table(table_name, record, schema=schema, check_nullable=True, defaults=defaults)
 			if len(errors):
 				raise ValueError("\n".join(errors))
 			insert_data.append(insert)
@@ -903,8 +929,10 @@ class DBH:
 				for key in key_list:
 					value_list.append(record[key])
 				values_list.append("({})".format(', '.join(value_list)))
-			sql = "INSERT INTO {} ({}) VALUES {}".format(table_name, ', '.join(key_list), ', '.join(values_list))
+			sql = "INSERT INTO {}.{} ({}) VALUES {}".format(schema, table_name, ', '.join(qkey_list), ', '.join(values_list))
 			response = self.do(sql)
+			if self.dry_run:
+				return len(value_list)
 			return response
 		
 		# Individual inserts
@@ -919,24 +947,25 @@ class DBH:
 				qkey_list.append(qkey)
 				value_list.append(record[key])
 			
-			sql = "INSERT INTO {} ({}) VALUES ({})".format(table_name, ', '.join(qkey_list), ', '.join(value_list))
+			sql = "INSERT INTO {}.{} ({}) VALUES ({})".format(schema, table_name, ', '.join(qkey_list), ', '.join(value_list))
 			response = self.do(sql)
 			cnt += response
 		return cnt
 	
 	"""
 	num_of_updates = dbh.update(table_name, key_name, data)
-	num_of_updates = dbh.update(table_name, key_name, data, quote_keys=True)
+	num_of_updates = dbh.update(table_name, key_name, data, schema=None, quote_keys=True)
 	"""
-	def update(self, table_name, key_name, data, quote_keys=False):
+	def update(self, table_name, key_name, data, schema=None, quote_keys=False):
 		if type(data) is not list:
 			data = [data]
 		if not len(data):
 			return 0
 		
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		cnt = 0
 		for record in data:
-			update, errors = self.quote_for_table(table_name, record)
+			update, errors = self.quote_for_table(table_name, record, schema=schema)
 			if len(errors):
 				raise ValueError("\n".join(errors))
 			
@@ -956,7 +985,7 @@ class DBH:
 			where_clause = self.make_where_clause(where_hash, should_quote_identifier=quote_keys)
 			if not where_clause:
 				continue
-			sql = "UPDATE {} SET {} WHERE {}".format(table_name, ', '.join(set_pairs), where_clause)
+			sql = "UPDATE {}.{} SET {} WHERE {}".format(schema, table_name, ', '.join(set_pairs), where_clause)
 			
 			cnt += self.do(sql)
 		return cnt
@@ -972,33 +1001,37 @@ class DBH:
 	})
 	num_of_deletes = dbh.delete(table_name, {
 		"key": "value"
-	}, conjunction='or', quote_keys=True)
+	}, schema=None, conjunction='and', quote_keys=False)
 	"""
-	def delete(self, table_name, where_clause, conjunction='and', should_quote_identifier=False):
+	def delete(self, table_name, where_clause, conjunction='and', schema=None, should_quote_identifier=False):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		where_clause = self.make_where_clause(where_clause, conjunction=conjunction, should_quote_identifier=should_quote_identifier)
 		if not where_clause:
 			return 0
 		
-		sql = "DELETE FROM {} WHERE {}".format(table_name, where_clause)
+		sql = f"DELETE FROM {schema}.{table_name} WHERE {where_clause}"
 		
 		record = self.do(sql)
 		return record
 	
 	"""
-	num_of_inserts, num_of_updates = dbh.insert_update(table_name, key_name, data, quote_keys=True, defaults={})
+	num_of_inserts, num_of_updates = dbh.insert_update(table_name, key_name, data, schema=None, quote_keys=True, defaults={})
 	num_of_inserts, num_of_updates = dbh.insert_update(
 		table_name,
 		key_name,
 		data,
+		schema=None,
 		quote_keys=False,
 		defaults={}
 	)
 	"""
-	def insert_update(self, table_name, key_name, data, quote_keys=False, defaults={}, insert_only=False):
+	def insert_update(self, table_name, key_name, data, schema=None, quote_keys=False, defaults={}, insert_only=False):
 		if type(data) is not list:
 			data = [data]
 		if not len(data):
 			return 0
+		
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		
 		key_list = common.to_list(data, key_name)
 		where_clause = self.make_where_clause({
@@ -1006,7 +1039,7 @@ class DBH:
 		}, should_quote_identifier=quote_keys)
 		if not where_clause:
 			return 0
-		sql = f"SELECT {key_name} FROM {table_name} WHERE {where_clause}"
+		sql = f"SELECT {key_name} FROM {schema}.{table_name} WHERE {where_clause}"
 		existing_keys = self.select_column(sql)
 		
 		insert_records = []
@@ -1024,17 +1057,18 @@ class DBH:
 		
 		num_of_inserts = 0
 		if insert_records:
-			num_of_inserts = self.insert(table_name, insert_records, quote_keys=quote_keys, defaults=defaults)
+			num_of_inserts = self.insert(table_name, insert_records, schema=schema, quote_keys=quote_keys, defaults=defaults)
 		num_of_updates = 0
 		if update_records:
-			num_of_updates = dbh.update(table_name, key_name, update_records, quote_keys=quote_keys)
+			num_of_updates = dbh.update(table_name, key_name, update_records, schema=schema, quote_keys=quote_keys)
 		return num_of_inserts, num_of_updates
 	
 	"""
-	num_of_inserts = dbh.insert_unique(table_name, key_name, data, quote_keys=True, defaults={})
+	num_of_inserts = dbh.insert_unique(table_name, key_name, data, schema=None, quote_keys=True, defaults={})
 	"""
-	def insert_unique(self, table_name, key_name, data, quote_keys=False, defaults={}):
-		num_of_inserts, num_of_updates = self.insert_update(table_name, key_name, data, quote_keys=quote_keys, defaults=defaults, insert_only=True)
+	def insert_unique(self, table_name, key_name, data, schema=None, quote_keys=False, defaults={}):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		num_of_inserts, num_of_updates = self.insert_update(table_name, key_name, data, schema=schema, quote_keys=quote_keys, defaults=defaults, insert_only=True)
 		return num_of_inserts
 	
 	"""
@@ -1044,20 +1078,23 @@ class DBH:
 		primary_key = field_name,
 		secondary_key = field_name,
 		data = list_of_hashes,
+		schema = None,
 		quote_keys=True,
 		defaults={}
 	)
 	"""
-	def sync_index_table(self, table_name, primary_key, secondary_key, data, quote_keys=False, defaults={}):
+	def sync_index_table(self, table_name, primary_key, secondary_key, data, schema=None, quote_keys=False, defaults={}):
 		if type(data) is not list:
 			data = [data]
 		if not len(data):
 			return 0, 0
 		
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		
 		# Read existing records
 		primary_ids = common.to_list(data, primary_key)
 		where_clause = self.make_where_clause({ primary_key: primary_ids })
-		existing_records = self.select_as_list_of_hashes(f"SELECT {primary_key}, {secondary_key} FROM {table_name} WHERE {where_clause}")
+		existing_records = self.select_as_list_of_hashes(f"SELECT {primary_key}, {secondary_key} FROM {schema}.{table_name} WHERE {where_clause}")
 		
 		# Find records to insert
 		insert_records = []
@@ -1068,7 +1105,7 @@ class DBH:
 					found = True
 			if not found:
 				insert_records.append(record)
-		num_of_inserts = self.insert(table_name, insert_records, quote_keys=quote_keys, defaults=defaults)
+		num_of_inserts = self.insert(table_name, insert_records, schema=schema, quote_keys=quote_keys, defaults=defaults)
 		
 		# Find records to delete
 		num_of_deletes = 0
@@ -1087,25 +1124,108 @@ class DBH:
 				num_of_deletes += self.delete(table_name, {
 					primary_key: existing[primary_key],
 					secondary_key: existing[secondary_key]
-				}, should_quote_identifier=quote_keys)
+				}, schema=schema, should_quote_identifier=quote_keys)
 		
 		return num_of_inserts, num_of_deletes
 	
 	
 	# Admin functions
+	"""
+	schema, table_name = dbh.split_schema_from_table_name(full_table_name, schema=None)
+	"""
+	def split_schema_from_table_name(self, full_table_name, schema=None):
+		if not schema:
+			schema = 'public'
+		table_name = full_table_name
+		if re.search(r'\.', full_table_name):
+			parts = full_table_name.split('.')
+			if not parts or len(parts) > 2:
+				raise ValueError(f"Table name '{full_table_name}' can not be split into schema/table")
+			schema = parts[0]
+			table_name = parts[1]
+		return schema, table_name
 	
 	"""
-	record = dbh.create_table(table_name, create_sql)
+	boolean = dbh.is_table(table_name, schema=None)
 	"""
-	def create_table(self, table_name, sql):
-		return self.do(sql)
+	def is_table(self, table_name, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		answer = self.select_value("SELECT table_name FROM information_schema.tables WHERE table_schema = {} AND table_name = {}".format(self.quote(schema), self.quote(table_name)))
+		if answer:
+			return True
+		return False
 	
 	"""
-	record = dbh.drop_table(table_name)
+	success = dbh.create_table(table_name, create_sql, indexes=[], schema=None)
 	"""
-	def drop_table(self, table_name):
-		sql = "DROP TABLE {}".format(table_name)
-		return self.do(sql)
+	def create_table(self, table_name, sql, indexes=[], schema=None):
+		response = -1
+		if not self.is_table(table_name):
+			if self.dry_run:
+				self.ui.dry_run(sql)
+			else:
+				response = self.do(sql)
+		for field_name in indexes:
+			self.create_index(table_name, field_name)
+		if response == -1:
+			return True
+		return False
+	
+	"""
+	record = dbh.drop_table(table_name, schema=None)
+	"""
+	def drop_table(self, table_name, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		if not self.is_table(table_name):
+			return True
+		sql = f"DROP TABLE {schema}.{table_name}"
+		if self.dry_run:
+			self.ui.dry_run(sql)
+		else:
+			response = self.do(sql)
+		if response == -1:
+			return True
+		return False
+	
+	"""
+	boolean = dbh.is_index(index_name, schema=None)
+	"""
+	def is_index(self, index_name, schema='public'):
+		sql = """
+SELECT c.relname
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = {} AND c.relname = {}
+""".format(self.quote(schema), self.quote(index_name))
+		answer = self.select_value(sql)
+		if answer:
+			return True
+		return False
+	
+	
+	def get_index_name(self, table_name, field_name):
+		schema, table_name = self.split_schema_from_table_name(table_name)
+		field_name = re.sub(r'[^a-zA-Z0-9_]', '_', field_name)
+		field_name = re.sub(r'__+', '_', field_name)
+		return f"{table_name}_{field_name}_idx"
+	
+	"""
+	success = dbh.create_index(table_name, field_name, schema=None)
+	"""
+	def create_index(self, table_name, field_name, schema=None):
+		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		index_name = self.get_index_name(table_name, field_name)
+		if self.is_index(index_name, schema=schema):
+			return True
+		qfield_name = self.identifier(field_name)
+		sql = f"CREATE INDEX {index_name} ON {schema}.{table_name} USING btree({qfield_name})"
+		response = -1
+		if self.dry_run:
+			self.ui.dry_run(sql)
+		else:
+			response = self.do(sql)
+		if response == -1:
+			return True
+		return False
 	
 	
 	"""

@@ -127,7 +127,7 @@ class Interface:
 					if ('short' in opt and o == '-' + opt['short']) or ('long' in opt and o == '--' + opt['long']):
 						if 'type' not in opt or opt['type'] == 'bool':
 							a = True
-						if 'type' in opt and opt['type'] == 'file':
+						if opt.get('type') == 'file':
 							if not os.path.isfile(a):
 								self.error("File '{}' not found".format(a))
 								sys.exit(2)
@@ -136,6 +136,21 @@ class Interface:
 						if 'long' in opt:
 							self._opts[opt['long']] = a
 		
+		if 'options' in params:
+			for param in params['options']:
+				label = param['long']
+				if 'label' in param:
+					label = param['label']
+				
+				if 'default' in param and not self._opts[param['long']]:
+					self._opts[param['short']] = param['default']
+					self._opts[param['long']] = param['default']
+				if param.get('type') == 'input' and type(param.get('values')) is list:
+					if self._opts[param['long']] not in param['values']:
+						self.error("Option '{}' must be one of '{}'".format(label, "', '".join(param['values'])))
+						self.usage()
+						sys.exit(2)
+				
 		# Handle arguments
 		if 'args' in params:
 			for param in params['args']:
@@ -464,6 +479,61 @@ class Interface:
 				input = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(input))
 		print(input)
 
-
-
+	def format_table(self, records, fields=None, frame=False):
+		records = common.to_list(records)
+		if not fields:
+			fields = list(records.keys())
+		divider = " "
+		if frame:
+			divider = "|"
+		
+		## Find field lengths and types
+		field_info = {}
+		for field in fields:
+			field_info[field] = {
+				"length": len(field),
+				"type": "numeric"
+			}
+		for record in records:
+			for field in fields:
+				length = len(str(record.get(field)))
+				if length > field_info[field]['length']:
+					field_info[field]['length'] = length
+				if type(record.get(field)) is str:
+					field_info[field]['type'] = 'string'
+		
+		## Assemble output
+		# Add header
+		output = divider
+		cnt = 0
+		for field in fields:
+			cnt += 1
+			if cnt > 1:
+				output += divider
+			
+			length = field_info[field]['length']
+			if field_info[field]['type'] == 'numeric':
+				output += f"{field:>{length}}"
+			else:
+				output += f"{field:<{length}}"
+		output += divider
+		output = self.format_text(output, 'underline')
+		output += "\n"
+		
+		# Add records
+		while records:
+			record = records.pop(0)
+			output += divider
+			cnt = 0
+			for field in fields:
+				cnt += 1
+				if cnt > 1:
+					output += divider
+				length = field_info[field]['length']
+				value = record.get(field, '')
+				output += f"{value:{length}}"
+			output += divider
+			if records:
+				output += "\n"
+		return output
 

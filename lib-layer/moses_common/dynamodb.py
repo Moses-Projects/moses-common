@@ -611,7 +611,7 @@ class Table:
 		"value": field_value
 	}])
 	"""
-	def scan(self, filters=None):
+	def scan(self, filters=None, scan_all=True):
 		response = {}
 		items = []
 		
@@ -639,21 +639,22 @@ class Table:
 			return None
 		
 		items = response['Items']
-		while 'LastEvaluatedKey' in response:
-			if filter_expression:
-				response = boto3_client.scan(
-					TableName = self.name,
-					ExclusiveStartKey=response['LastEvaluatedKey'],
-					FilterExpression=filter_expression,
-					ExpressionAttributeNames=attribute_names,
-					ExpressionAttributeValues=attribute_values
-				)
-			else:
-				response = boto3_client.scan(
-					TableName = self.name,
-					ExclusiveStartKey=response['LastEvaluatedKey']
-				)
-			items.extend(response['Items'])
+		if scan_all:
+			while 'LastEvaluatedKey' in response:
+				if filter_expression:
+					response = boto3_client.scan(
+						TableName = self.name,
+						ExclusiveStartKey=response['LastEvaluatedKey'],
+						FilterExpression=filter_expression,
+						ExpressionAttributeNames=attribute_names,
+						ExpressionAttributeValues=attribute_values
+					)
+				else:
+					response = boto3_client.scan(
+						TableName = self.name,
+						ExclusiveStartKey=response['LastEvaluatedKey']
+					)
+				items.extend(response['Items'])
 		results = self.convert_from_item(items)
 		if self.log_level >= 7:
 			print("scan {}: {}".format(self.name, len(results)))
