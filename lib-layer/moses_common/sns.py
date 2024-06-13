@@ -149,6 +149,7 @@ class Message:
 		self.dry_run = dry_run
 		self.ui = moses_common.ui.Interface(use_slack_format=True)
 		
+		print("data {}".format(type(data)))
 		self.data = data
 		
 	@property
@@ -193,114 +194,9 @@ class Message:
 			return headers['to']
 		return None
 	
+	@property
+	def mail_content(self):
+		if 'content' in self.data:
+			return common.convert_value(self.data['content'])
+		return None
 	
-	
-	def convert_for_ses(self):
-		message = self.data
-		if 'content' not in message or 'mail' not in message:
-			return None
-		if 'headers' not in message['mail']:
-			return None
-		email = {
-			"charset": None,
-			"subject": ""
-		}
-		
-		# Get MIME boundary
-		boundary = None
-		if 'headers' in message['mail']:
-			mime_version = None
-			content_type = None
-			for header in message['mail']['headers']:
-				if header['name'].lower() == 'mime-version':
-					mime_version = header['value']
-				elif header['name'].lower() == 'content-type':
-					content_type = header['value']
-				elif header['name'].lower() == 'subject':
-					email['subject'] = header['value']
-			if mime_version and re.match(r'multipart/alternative', content_type):
-				parts = re.search(r'boundary=(.*)', content_type)
-				if parts and parts[1]:
-					boundary = re.sub(r"'", '', parts[1])
-					if self.log_level >= 7:
-						print("boundary {}: {}".format(type(boundary), boundary))
-		
-		body = common.convert_value(message['content'])
-		
-		lines = re.split(r'\r\n', body)
-		in_body = False
-		in_part = False
-		in_part_body = False
-		part_type = None
-		b_line = re.compile("--{}".format(boundary))
-		b_end = re.compile("--{}--".format(boundary))
-		for line in lines:
-			if self.log_level >= 7:
-				print(f"# {line}")
-			# Skip past headers
-			if not in_body:
-				if not len(line):
-					in_body = True
-				continue
-			
-			if boundary:
-				if self.log_level >= 7:
-					print("    body")
-				if b_end.match(line):
-					if self.log_level >= 7:
-						print("      boundary end")
-					break
-				if b_line.match(line):
-					if self.log_level >= 7:
-						print("      boundary")
-					part_type = None
-					in_part = True
-					in_part_body = False
-					continue
-				if not in_part:
-					if self.log_level >= 7:
-						print("      outside part")
-					continue
-				if self.log_level >= 7:
-					print("      inside part")
-				if not in_part_body:
-					if self.log_level >= 7:
-						print("        outside part body")
-					if not len(line):
-						if self.log_level >= 7:
-							print("          end of part header")
-						in_part_body = True
-						continue
-					if re.match('Content-Type', line, re.IGNORECASE):
-						if re.search('text/plain', line, re.IGNORECASE):
-							part_type = 'text'
-						elif re.search('text/html', line, re.IGNORECASE):
-							part_type = 'html'
-						if self.log_level >= 7:
-							print(f"      part type {part_type}")
-					if re.search(r'charset', line, re.IGNORECASE):
-						if re.search(r'utf-?8', line, re.IGNORECASE):
-							email['charset'] = 'UTF-8'
-						elif re.search(r'iso-8859-1', line, re.IGNORECASE):
-							email['charset'] = 'ISO-8859-1'
-						elif re.search(r'shift.jis', line, re.IGNORECASE):
-							email['charset'] = 'Shift_JIS'
-						if self.log_level >= 7:
-							print(f"      charset {email['charset']}")
-						continue
-				if in_part_body and part_type:
-					if self.log_level >= 7:
-						print(f"      {part_type} - capture")
-					if part_type not in email:
-						email[part_type] = ''
-					email[part_type] += line + "\n"
-			
-			else:
-				if self.log_level >= 7:
-					print("      text")
-				if 'text' not in email:
-					email['text'] = ''
-				email['text'] += line + "\n"
-		
-		return email
-

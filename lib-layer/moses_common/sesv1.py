@@ -1,4 +1,4 @@
-# print("Loaded SESv2 module")
+# print("Loaded SESv1 module")
 
 import re
 from boto3 import client as boto3_client
@@ -18,7 +18,7 @@ class Email:
 		self.dry_run = dry_run
 		self.ui = moses_common.ui.Interface(use_slack_format=True)
 	
-		self.client = boto3_client('sesv2', region_name="us-west-2")
+		self.client = boto3_client('ses', region_name="us-west-2")
 		self.from_address_arn = from_address_arn
 		self.from_address = re.sub(r'^.*/', '', from_address_arn)
 		
@@ -41,55 +41,21 @@ class Email:
 		"charset": None (7-bit ASCII) or 'UTF-8' or 'ISO-8859-1' or 'Shift_JIS'
 		"subject": str,
 		"text": text_of_body,
-		"html": html_of_body,
-		"raw": raw_body
+		"html": html_of_body
 	})
 	"""
 	def send(self, args):
 		to_addresses = common.to_list(args.get('to'))
 		cc_addresses = common.to_list(args.get('cc'))
 		bcc_addresses = common.to_list(args.get('bcc'))
-		reply_to_addresses = common.to_list(args.get('reply_to'))
-		
-		charset = None
-		if charset in ['UTF-8', 'ISO-8859-1', 'Shift_JIS']:
-			charset = args.get('charset')
-		
-		subject = {
-			"Data": args.get('subject', '')
-		}
-		if charset:
-			subject['Charset'] = charset
 		
 		content = {}
 		if args.get('raw'):
-# 			args['raw'] = re.sub(r'Return-Path:.*?\r\n', r'Return-Path: <{}>\r\n'.format(self.from_address), args['raw'], 1, flags=re.IGNORECASE)
+			args['raw'] = re.sub(r'Return-Path:.*?\r\n', r'Return-Path: <{}>\r\n'.format(self.from_address), args['raw'], 1, flags=re.IGNORECASE)
+			args['raw'] = re.sub(r'\r\nFrom:.*?\r\n', r'\r\nFrom: <{}>\r\n'.format(self.from_address), args['raw'], 1, flags=re.IGNORECASE)
 			content = {
-				"Raw": {
-					"Data": bytes(args['raw'], 'utf-8')
-				}
+				"Data": bytes(args['raw'], 'utf-8')
 			}
-		else:
-			body = {}
-			if args.get('html'):
-				body['Html'] = {
-					"Data": args.get('html')
-				}
-				if charset:
-					body['Html']['Charset'] = charset
-			if args.get('text'):
-				body['Text'] = {
-					"Data": args.get('text')
-				}
-				if charset:
-					body['Text']['Charset'] = charset
-			content = {
-				"Simple": {
-					"Subject": subject,
-					"Body": body
-				}
-			}
-		
 		
 		tags_list = []
 		if 'tags' in args:
@@ -102,31 +68,21 @@ class Email:
 				self.ui.body(f"CC: {cc_addresses}")
 			if bcc_addresses:
 				self.ui.body(f"BCC: {bcc_addresses}")
-			if reply_to_addresses:
-				self.ui.body(f"Reply-to: {reply_to_addresses}")
-			self.ui.body(f"Subject: {subject}")
-			self.ui.body(f"Body: {body}")
+			self.ui.body(f"Body: {content}")
 		
 		if self.dry_run:
 			self.ui.dry_run(f"ses.send()")
 			return 'MessageId-*'
 		
-		from_email_address = self.from_address
-		if args.get('from_name'):
-			from_email_address = f"{args['from_name']} <{self.from_address}>"
-		
 		print("content {}: {}".format(type(content), content))
-		response = self.client.send_email(
-			FromEmailAddress = from_email_address,
-			FromEmailAddressIdentityArn = self.from_address_arn,
-			Destination = {
-				"ToAddresses": to_addresses,
-				"CcAddresses": cc_addresses,
-				"BccAddresses": bcc_addresses
-			},
-			ReplyToAddresses = reply_to_addresses,
-			Content = content,
-			EmailTags = tags_list
+		response = self.client.send_raw_email(
+			Source = self.from_address,
+			Destinations = to_addresses,
+			RawMessage = content,
+			FromArn = self.from_address_arn,
+			SourceArn = self.from_address_arn,
+			ReturnPathArn = self.from_address_arn,
+			Tags = tags_list
 		)
 		if type(response) is dict and 'MessageId' in response:
 			return response['MessageId']
