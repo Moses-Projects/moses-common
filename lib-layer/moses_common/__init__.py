@@ -818,6 +818,13 @@ def add_ordinal_suffix(number):
 		return number + 'rd'
 	return number + 'th'
 
+def match_capitalization(original, word):
+	if re.match(r'^[^a-z]+$', original):
+		return word.upper()
+	elif re.match(r'^[A-Z]', original):
+		return word.capitalize()
+	else:
+		return word.lower()
 
 ## Number handling
 
