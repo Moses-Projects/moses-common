@@ -690,6 +690,9 @@ def normalize(text, strip_single_chars=True):
 		new_words.append(word)
 	return ' '.join(new_words)
 
+def convert_to_ascii(unicode):
+	return unidecode.unidecode(unicode)
+
 def convert_to_camelcase(text):
 # 	text = re.sub(r'[_-](css|html|ics|ip|json|oid|php|rss|smtp|sql|ssl|url|utf|xml|xslt?)(_|$)', r'\1'.upper() + r'\2', text)
 	text = convert_to_str(text)

@@ -149,7 +149,7 @@ class Message:
 		self.dry_run = dry_run
 		self.ui = moses_common.ui.Interface(use_slack_format=True)
 		
-		print("data {}".format(type(data)))
+		print("data {}: {}".format(type(data), data))
 		self.data = data
 		
 	@property
