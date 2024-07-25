@@ -120,7 +120,7 @@ class GPT(OpenAI):
 		if self._dry_run:
 			return "Dry run prompt"
 		
-		client = openai.OpenAI()
+		client = openai.OpenAI(api_key=self.openai_api_key)
 		
 		completion = client.chat.completions.create(
 			model = self.model,
