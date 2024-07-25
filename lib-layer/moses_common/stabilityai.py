@@ -1,6 +1,7 @@
 # print("Loaded StabilityAI module")
 
 import io
+import json
 import os
 import random
 import re
@@ -298,10 +299,10 @@ class StableDiffusion(StabilityAI):
 					qfilename_prefix = filename_prefix + '-'
 				
 				qfilename_suffix = ''
-# 				if data['orientation'] != 'square':
-# 					qfilename_suffix = '-' + data['orientation']
-# 				if data['aspect'] != 'square':
-# 					qfilename_suffix += '-' + data['aspect']
+#				if data['orientation'] != 'square':
+#					qfilename_suffix = '-' + data['orientation']
+#				if data['aspect'] != 'square':
+#					qfilename_suffix += '-' + data['aspect']
 				
 				if filename_suffix:
 					qfilename_suffix = '-' + filename_suffix
@@ -353,7 +354,7 @@ class StableDiffusion(StabilityAI):
 					# Generation height, defaults to 512 if not included.
 				samples = 1,
 					# Number of images to generate, defaults to 1 if not included.
-# 				sampler = generation.SAMPLER_K_DPMPP_2M,
+#				sampler = generation.SAMPLER_K_DPMPP_2M,
 					# Choose which sampler we want to denoise our generation with.
 					# Defaults to k_dpmpp_2m if not specified. Clip Guidance only supports ancestral samplers.
 					# (Available Samplers: ddim, plms, k_euler, k_euler_ancestral, k_heun, k_dpm_2, k_dpm_2_ancestral, k_dpmpp_2s_ancestral, k_lms, k_dpmpp_2m, k_dpmpp_sde)
@@ -399,6 +400,227 @@ class StableDiffusion(StabilityAI):
 					img.save(data['filepath'], pnginfo=self.get_png_info(data))
 					return True, data
 		return False, "Failed response from StabilityAI"
+
+
+
+class StableImage(StabilityAI):
+	"""
+	stable_image = moses_common.stabilityai.StableImage()
+	stable_image = moses_common.stabilityai.StableImage(
+		stability_key = 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+		save_directory = os.environ['HOME'] + '/Downloads',
+		log_level = 5,
+		dry_run = False
+	)
+	"""
+	def __init__(self, stability_key=None, save_directory=None, model='sdxl10', log_level=5, dry_run=False):
+		super().__init__(stability_key=stability_key, save_directory=save_directory, log_level=log_level, dry_run=dry_run)
+		
+		self.name = None
+		self.endpoint = 'https://api.stability.ai/v2beta/stable-image/generate/'
+		if model == 'sd3':
+			self.endpoint += 'sd3'
+			self.name = 'sd3'
+		elif model == 'sicore':
+			self.endpoint += 'core'
+			self.name = 'sicore'
+		elif model == 'siultra':
+			self.endpoint += 'ultra'
+			self.name = 'siultra'
+		else:
+			raise ValueError("Invalid model")
+	
+	@property
+	def label(self):
+		if self.name == 'sd3':
+			return "Stable Diffusion 3"
+		elif self.name == 'sicore':
+			return "Stable Image Core"
+		elif self.name == 'siultra':
+			return "Stable Image Ultra"
+		return "Stable Diffusion XL"
+	
+	def get_resolution(self, ar=None):
+		if not ar:
+			ar = 1.0
+		ar = common.convert_to_float(ar)
+		width = 1024
+		height = 1024
+		
+		
+		aspect = '1:1'
+		if ar >= 2.075:
+			width = 1536
+			height = 640
+			aspect = '21:9'
+		elif ar >= 1.605:
+			width = 1344
+			height = 768
+			aspect = '16:9'
+		elif ar >= 1.375:
+			width = 1216
+			height = 832
+			aspect = '3:2'
+		elif ar >= 1.145:
+			width = 1152
+			height = 896
+			aspect = '5:4'
+		
+		elif ar >= 0.89:
+			width = 1024
+			height = 1024
+			aspect = '1:1'
+		
+		elif ar >= 0.73:
+			width = 896
+			height = 1152
+			aspect = '4:5'
+		elif ar >= 0.625:
+			width = 832
+			height = 1216
+			aspect = '2:3'
+		elif ar >= 0.495:
+			width = 768
+			height = 1344
+			aspect = '9:16'
+		else:
+			width = 640
+			height = 1536
+			aspect = '9:21'
+		return aspect, width, height
+	
+	"""
+	stable_image.text_to_image(prompt)
+	stable_image.text_to_image(
+		prompt,
+		negative_prompt=string,
+		filename=filename,
+		seed=int,
+		steps=int,
+		cfg_scale=float,
+		orientation='square' || 'landscape' || 'portrait',
+		aspect='square' || 'full' || '35' || 'hd'
+	)
+	
+			~ratio	sdxl10		sdxlbeta	sd20
+	ultra	21:9	1536x640							2.40	0.42
+	ultra	2:1								1024x512	2.00	0.50
+			1.85:1							947x512		1.85	0.54
+	hd		16:9							910x512		1.78	0.56
+	hd		7:4		1344x768	896x512		896x512		1.75	0.57
+	35		3:2					768x512		768x512		1.50	0.67
+	35		3:2		1216x832							1.46	0.68
+			4:3					683x512		683x512		1.33	0.75
+	full	5:4		1152x896							1.29	0.78
+	full	5:4					640x512		640x512		1.25	0.80
+	square	1:1		1024x1024	512x512		512x512		1		1
+	
+	"""
+	def text_to_image(self,
+		prompt,
+		filename=None,
+		negative_prompt=None,
+		seed=None,
+		steps=None,
+		cfg_scale=None,
+		filename_prefix=None,
+		filename_suffix=None,
+		return_args=False,
+		
+		aspect_ratio=None,
+		orientation=None,
+		aspect=None
+	):
+		
+		data = prompt
+		if type(prompt) is not dict:
+			now = common.get_dt_now()
+			data = {
+				"create_time": now.isoformat(' '),
+				"engine_label": self.label,
+				"engine_name": self.name,
+				"prompt": prompt,
+				"filename": filename,
+				"seed": int(str(random.randrange(1000000000)).zfill(9)),
+				"steps": 30,
+				"cfg_scale": 7.0
+			}
+			
+			# Negative prompt
+			if negative_prompt:
+				data['negative_prompt'] = str(negative_prompt)
+			
+			# Seed
+			if seed:
+				data['seed'] = common.convert_to_int(seed)
+			
+			# Steps
+			if steps:
+				data['steps'] = common.convert_to_int(steps)
+			
+			# CFG scale
+			if cfg_scale:
+				data['cfg_scale'] = common.convert_to_float(cfg_scale)
+			
+			# Resolution
+			data['aspect_ratio'], data['width'], data['height'] = self.get_resolution(aspect_ratio)
+			
+			# Filename
+			if not data['filename']:
+				if not self.save_directory:
+					raise ValueError("A filepath or save directory is required.")
+				
+				qfilename_prefix = ''
+				if filename_prefix:
+					qfilename_prefix = filename_prefix + '-'
+				
+				qfilename_suffix = ''
+#				if data['orientation'] != 'square':
+#					qfilename_suffix = '-' + data['orientation']
+#				if data['aspect'] != 'square':
+#					qfilename_suffix += '-' + data['aspect']
+				
+				if filename_suffix:
+					qfilename_suffix = '-' + filename_suffix
+				
+				ts = str(common.get_epoch())
+				data['filename'] = '{}{}-{}-{}{}.png'.format(qfilename_prefix, ts, self.name, data['seed'], qfilename_suffix)
+				data['filepath'] = '{}/{}'.format(self.save_directory, data['filename'])
+		
+			if return_args:
+				return data
+		
+		if self.log_level >= 7:
+			print(data)
+		
+		# Generate image
+		if self.dry_run:
+			return True, data
+		
+		body = {
+			"prompt": data['prompt'],
+			"negative_prompt": data['negative_prompt'],
+			"aspect_ratio": data['aspect_ratio'],
+			"seed": data['seed'],
+			"output_format": "png"
+		}
+		
+		response = requests.post(
+			self.endpoint,
+			headers={
+				"authorization": f"Bearer {self.stability_key}",
+				"accept": "image/*"
+			},
+			files={"none": ''},
+			data=body
+		)
+		
+		if response.status_code == 200:
+			with open(data['filepath'], 'wb') as file:
+				file.write(response.content)
+		else:
+			raise Exception(str(response.json()))		
+		return True, data
 
 
 

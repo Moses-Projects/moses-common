@@ -138,7 +138,7 @@ class Interface:
 		
 		if 'options' in params:
 			for param in params['options']:
-				label = param['long']
+				label = param.get('long')
 				if 'label' in param:
 					label = param['label']
 				
