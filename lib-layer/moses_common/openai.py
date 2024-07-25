@@ -162,6 +162,8 @@ class GPT(OpenAI):
 			if not re.match(r'\d+\.', line):
 				continue
 			tag = re.sub(r'\d+\. *', '', line)
+			if re.match(r'\*\*', tag):
+				tag = re.sub(r'^\*\*.*?\*\*(\s*[:-])?\s+', '', tag)
 			if re.search(r'"$', tag):
 				tag = re.sub(r'(^"|"$)', '', tag)
 			tags.append(tag)
