@@ -85,7 +85,7 @@ class GPT(OpenAI):
 	"""
 	def __init__(self, openai_api_key=None, model=None, log_level=5, dry_run=False):
 		super().__init__(openai_api_key=openai_api_key, log_level=log_level, dry_run=dry_run)
-		self.model = model or 'gpt-4'
+		self.model = model or 'gpt-4o'
 		
 	
 	@property
@@ -96,6 +96,8 @@ class GPT(OpenAI):
 	def model(self, value):
 		if re.match(r'gpt-3', value):
 			self._model = 'gpt-3.5-turbo'
+		elif value == 'gpt-4o':
+			self._model = 'gpt-4o'
 		else:
 			self._model = 'gpt-4'
 	
@@ -103,6 +105,8 @@ class GPT(OpenAI):
 	def label(self):
 		if re.match(r'gpt-3', self.model):
 			return "GPT 3.5"
+		elif self.model == 'gpt-4o':
+			return "GPT 4o"
 		else:
 			return "GPT 4"
 	
@@ -116,7 +120,9 @@ class GPT(OpenAI):
 		if self._dry_run:
 			return "Dry run prompt"
 		
-		completion = openai.ChatCompletion.create(
+		client = openai.OpenAI()
+		
+		completion = client.chat.completions.create(
 			model = self.model,
 			messages = [{
 				"role": "user",
@@ -126,17 +132,16 @@ class GPT(OpenAI):
 		)
 		
 		answer = None
-		if 'choices' not in completion or type(completion['choices']) is not list or not len(completion['choices']):
+		if not completion or not completion.choices:
 			if self.log_level >= 6:
 				print(completion)
 			return None
 		else:
-			choices = []
-			for choice in completion['choices']:
-				if 'message' in choice and 'content' in choice['message']:
-					answer = choice['message']['content'].rstrip().lstrip()
-				elif 'text' in choice:
-					answer = choices.append(choice['text'].rstrip().lstrip())
+			for choice in completion.choices:
+				if choice.message:
+					answer = choice.message.content.rstrip().lstrip()
+				elif choice.text:
+					answer = choice.text.rstrip().lstrip()
 		if not answer:
 			if self.log_level >= 6:
 				print(completion)
@@ -150,7 +155,7 @@ class GPT(OpenAI):
 		return answer
 	
 	def process_list(self, results):
-		lines = results.splitlines()
+		lines = results.split("\n")
 		tags = []
 		for line in lines:
 			line = line.lstrip().rstrip()

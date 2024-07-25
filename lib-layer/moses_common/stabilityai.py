@@ -336,6 +336,7 @@ class StableDiffusion(StabilityAI):
 			return True, data
 		
 		if self.name == 'sd15':
+			print(f"Using {self.label}")
 			answers = self._stability_api.generate(
 				prompt = sd_prompt,
 				seed = data['seed'],
@@ -362,6 +363,7 @@ class StableDiffusion(StabilityAI):
 					# Enables CLIP Guidance. 
 			)
 		else:
+			print(f"Using {self.label}")
 			answers = self._stability_api.generate(
 				prompt = sd_prompt,
 				seed = data['seed'],
@@ -487,7 +489,7 @@ class StableImage(StabilityAI):
 			width = 640
 			height = 1536
 			aspect = '9:21'
-		return aspect, width, height
+		return ar, width, height, aspect
 	
 	"""
 	stable_image.text_to_image(prompt)
@@ -533,6 +535,7 @@ class StableImage(StabilityAI):
 	):
 		
 		data = prompt
+		aspect = '1:1'
 		if type(prompt) is not dict:
 			now = common.get_dt_now()
 			data = {
@@ -563,7 +566,7 @@ class StableImage(StabilityAI):
 				data['cfg_scale'] = common.convert_to_float(cfg_scale)
 			
 			# Resolution
-			data['aspect_ratio'], data['width'], data['height'] = self.get_resolution(aspect_ratio)
+			data['aspect_ratio'], data['width'], data['height'], aspect = self.get_resolution(aspect_ratio)
 			
 			# Filename
 			if not data['filename']:
@@ -599,12 +602,13 @@ class StableImage(StabilityAI):
 		
 		body = {
 			"prompt": data['prompt'],
-			"negative_prompt": data['negative_prompt'],
-			"aspect_ratio": data['aspect_ratio'],
+			"negative_prompt": data.get('negative_prompt'),
+			"aspect_ratio": aspect,
 			"seed": data['seed'],
 			"output_format": "png"
 		}
 		
+		print(f"Using {self.label}")
 		response = requests.post(
 			self.endpoint,
 			headers={
