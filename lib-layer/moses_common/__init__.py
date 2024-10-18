@@ -204,6 +204,8 @@ def decompress_gzip(gzip_bytes):
 boolean = common.is_json(json_string)
 """
 def is_json(json_string):
+	if type(json_string) is not str:
+		return False
 	json_object = parse_json(json_string)
 	if json_object is None:
 		return False
@@ -213,6 +215,8 @@ def is_json(json_string):
 json_object = common.parse_json(json_string)
 """
 def parse_json(json_string):
+	if type(json_string) is dict or type(json_string) is list:
+		return json_string
 	if type(json_string) is not str:
 		return None
 	json_string = json_string.strip()
@@ -229,12 +233,15 @@ def parse_json(json_string):
 
 """
 json_string = common.make_json(python_object)
+json_string = common.make_json(python_object, pretty_print=True, sort_keys=True)
 """
-def make_json(python_object, pretty_print=False):
+def make_json(python_object, pretty_print=False, sort_keys=False):
+	if is_json(python_object):
+		python_object = common.parse_json(python_object)
 	python_object = convert_datetime_to_string(python_object)
 	if pretty_print:
-		return json.dumps(python_object, sort_keys=False, indent=2)
-	return json.dumps(python_object)
+		return json.dumps(python_object, sort_keys=sort_keys, indent=2)
+	return json.dumps(python_object, sort_keys=sort_keys)
 
 
 """
@@ -352,6 +359,23 @@ def yaml_load(yaml_string):
 
 
 ## File handling
+
+def get_filename_timestamp():
+	tz = datetime.timezone(datetime.timedelta(hours=0))
+	now = datetime.datetime.now(tz)
+	return now.strftime("%Y_%m_%d-%H_%M_%S")
+
+def get_filepath(name=None, format=None):
+	path = ''
+	if os.environ.get('HOME'):
+		if os.path.isdir(path + 'Downloads'):
+			path = os.path.expanduser(os.environ.get('HOME')) + '/Downloads/'
+	if name:
+		path += convert_to_snakecase(normalize(name)) + '-'
+	path += get_filename_timestamp()
+	if format:
+		path += '.' + format
+	return path
 
 """
 age_in_days = common.get_file_age(filename)
@@ -612,7 +636,7 @@ def _map_csv_record(record, mapping):
 	return new_record
 
 """
-success = common.write_csv(filepath, array_of_dicts, fields=array_of_fields_to_include):
+success = common.write_csv(filepath, array_of_dicts, fields=array_of_fields_to_include)
 """
 def write_csv(filepath, data, fields=None):
 	filepath = os.path.expanduser(filepath)
@@ -632,8 +656,16 @@ environment = common.get_environment()
 def get_environment():
 	if os.environ.get('ENVIRONMENT') in ['prod', 'production', 'main'] or os.environ.get('X-ENVIRONMENT') in ['prod', 'production', 'main']:
 		return 'production'
-	if re.search(r'-(prod|main)-', os.environ.get('AWS_LAMBDA_FUNCTION_NAME', '')):
-		return 'production'
+	return 'dev'
+
+"""
+function_stage = common.get_function_stage()
+"""
+def get_function_stage():
+	if os.environ.get('STAGE') in ['main', 'prod', 'production']:
+		return 'main'
+	elif re.search(r'-(prod|main)-', os.environ.get('AWS_LAMBDA_FUNCTION_NAME', '')):
+		return 'main'
 	return 'dev'
 
 """
@@ -649,14 +681,78 @@ def get_env_abbr():
 dry_run, log_level, limit = common.set_basic_args(event)
 """
 def set_basic_args(event):
-	dry_run = convert_to_bool(event.get('dry_run')) or False
-	log_level = convert_to_int(event.get('log_level')) or 5
-	limit = convert_to_int(event.get('limit')) or None
+	dry_run = False
+	# From direct CLI
+	if 'dry_run' in event:
+		dry_run = convert_to_bool(event['dry_run']) or False
+# 		if dry_run:
+# 			print("dry_run from event")
+# 			print("event {}: {}".format(type(event), event))
+	# From CLI invoke
+	elif 'OPT_DRY_RUN' in os.environ:
+		dry_run = convert_to_bool(os.environ['OPT_DRY_RUN']) or False
+# 		if dry_run:
+# 			print("dry_run from env var")
+# 			print("os.environ {}: {}".format(type(os.environ), os.environ))
+	# From API or AWS invoke
+	elif 'headers' in event:
+		for header, value in event['headers'].items():
+			if header.upper() == 'X-DRY-RUN' and convert_to_bool(value):
+				dry_run = True
+# 				print("dry_run from header")
+# 				print("event['headers'] {}: {}".format(type(event['headers']), event['headers']))
+				break
 	
-	if convert_to_bool(event.get('verbose')):
-		log_level = 6
+	log_level = 5
+	# From direct CLI
 	if convert_to_bool(event.get('extra_verbose')):
 		log_level = 7
+	elif convert_to_bool(event.get('verbose')):
+		log_level = 6
+	elif 'log_level' in event:
+		log_level = convert_to_int(event['log_level']) or 5
+	# From CLI invoke
+	elif 'OPT_EXTRA_VERBOSE' in os.environ:
+		log_level = 7
+	elif 'OPT_VERBOSE' in os.environ:
+		log_level = 6
+	elif 'OPT_LOG_LEVEL' in os.environ:
+		log_level = convert_to_int(os.environ['OPT_LOG_LEVEL']) or 5
+	# From API or AWS invoke
+	elif 'headers' in event:
+		for header, value in event['headers'].items():
+			if header.upper() == 'X-VERBOSE' and convert_to_bool(value):
+				log_level = 6
+				break
+			elif header.upper() == 'X-EXTRA-VERBOSE' and convert_to_bool(value):
+				log_level = 7
+				break
+			elif header.upper() == 'X-LOG-LEVEL':
+				log_level = convert_to_int(value) or 5
+				break
+	
+	limit = None
+	# From direct CLI
+	if 'limit' in event:
+		limit = convert_to_int(event['limit']) or None
+	# From CLI invoke
+	elif 'OPT_LIMIT' in os.environ:
+		limit = convert_to_int(os.environ['OPT_LIMIT']) or None
+	elif 'headers' in event:
+		for header, value in event['headers'].items():
+			if header.upper() == 'X-LIMIT':
+				limit = convert_to_int(value) or None
+				break
+	
+	if log_level >= 7:
+		print(f"event: {event}")
+	if log_level >= 6:
+		if dry_run:
+			print("Dry run, ", end='')
+		print(f"Log level ({log_level})", end='')
+		if limit:
+			print(", Limit ({limit})", end='')
+		print('')
 	
 	return dry_run, log_level, limit
 
@@ -775,16 +871,23 @@ def plural(number, text):
 		return re.sub(r'(s|x|ch|sh)$', r'\1es', text)
 	return text + 's'
 
-def conjunction(orig_words, conj='and'):
-	conj = ' ' + conj + ' '
+def conjunction(orig_words, conj='and', quote=''):
 	if type(orig_words) is not list:
-		return str(orig_words)
+		return str(quote + orig_words + quote)
 	if len(orig_words) < 1:
 		return ''
 	
 	words = []
 	for word in orig_words:
-		words.append(str(word))
+		if type(word) is list:
+			subconj = 'or'
+			if conj == 'or':
+				subconj = 'and'
+			words.append('(' + conjunction(word, conj=subconj, quote=quote) + ')')
+		else:
+			words.append(quote + str(word) + quote)
+	
+	conj = ' ' + conj + ' '
 	if len(words) == 1:
 		return words[0]
 	elif len(words) == 2:
@@ -841,8 +944,9 @@ def round_half_up(n, decimals=0):
 """
 Collapses inner dicts by combining keys with hyphens. A key with the same name as the enclosing dict is named for the enclosing dict.
 flat_hash = common.flatten_hash(full_hash)
+flat_hash = common.flatten_hash(full_hash, delimiter='-', exempt=['field1', 'field2'])
 """
-def flatten_hash(input, upper_key=None, inner_key=None):
+def flatten_hash(input, upper_key=None, inner_key=None, delimiter='-', exempt=[]):
 	if type(input) is not dict:
 		return None
 	output = {}
@@ -851,10 +955,10 @@ def flatten_hash(input, upper_key=None, inner_key=None):
 		if inner_key == key:
 			new_key = upper_key
 		elif upper_key:
-			new_key = upper_key + '-' + key
+			new_key = upper_key + delimiter + key
 		
-		if type(value) is dict:
-			sub_hash = flatten_hash(value, new_key, key)
+		if type(value) is dict and key not in exempt:
+			sub_hash = flatten_hash(value, new_key, key, delimiter=delimiter)
 			for subkey, subvalue in sub_hash.items():
 				output[subkey] = subvalue
 		else:
@@ -873,14 +977,58 @@ def merge_hash(target, source):
 """
 Does a deep merge of a hash.
 common.update_hash(target_hash, source_hash)
+target_hash = common.update_hash({}, source_hash)
 """
 def update_hash(target, source):
-	for key, value in source.items():
-		if isinstance(value, collections.abc.Mapping):
-			target[key] = update_hash(target.get(key, {}), value)
-		else:
-			target[key] = value
+	if isinstance(source, collections.abc.Mapping):
+		for key, value in source.items():
+			if isinstance(value, collections.abc.Mapping) or type(value) is list:
+				target[key] = update_hash(target.get(key, {}), value)
+			else:
+				target[key] = value
+	elif type(source) is list:
+		for value in source:
+			if isinstance(value, collections.abc.Mapping) or type(value) is list:
+				if type(target) is list:
+					target.extend(update_hash(target, value))
+				else:
+					target = update_hash(target, value)
+			else:
+				if type(target) is not list:
+					target = []
+				target.append(value)
 	return target
+
+def are_alike(object_a, object_b):
+	if type(object_a) is not type(object_a):
+		return False
+	if type(object_a) is dict:
+		for key, value in object_a.items():
+			if key not in object_b:
+				return False
+			elif type(value) is dict or type(value) is list:
+				if not are_alike(value, object_b[key]):
+					return False
+			elif value != object_b[key]:
+				return False
+		for key, value in object_b.items():
+			if key not in object_a:
+				return False
+			elif type(value) is dict or type(value) is list:
+				if not are_alike(value, object_a[key]):
+					return False
+			elif value != object_a[key]:
+				return False
+	elif type(object_a) is list:
+		if len(object_a) != len(object_b):
+			return False
+		for i in range(len(object_a)):
+			if type(object_a[i]) is dict or type(object_a[i]) is list:
+				if not are_alike(object_a[i], object_b[i]):
+					return False
+			elif object_a[i] != object_b[i]:
+				return False
+	return True
 
 
 ## List handling
@@ -1037,12 +1185,17 @@ def convert_string_to_datetime(input):
 		return input
 	input = str(input)
 	input = input.strip()
-	input = re.sub(r'^(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})[t ](\d{1,2}:\d\d(:\d\d)?( (am|pm))?).*?$', r'\1 \2', input.lower())
+# 	input = re.sub(r'^(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})[t ](\d{1,2}:\d\d(:\d\d(.\d+)?([-+]\d\d(:?\d\d)?)?)?( (am|pm))?).*?$', r'\1 \2', input.lower())
+	input = re.sub(r'^(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})[t ](\d{1,2}:\d\d(:\d\d(\.\d+)?([-+]\d\d(:?\d\d)?)?)?( (am|pm))?).*?$', r'\1 \2', input.lower())
+	if re.match(r'[-+]\d\d(:?\d\d)?', input):
+		input += '+0000'
+	tz = datetime.timezone(datetime.timedelta(hours=0))
 	for date_format in ['%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y', '%m/%d/%y', '%d/%m/%y']:
-		for time_format in ['%I:%M:%S %p', '%H:%M:%S%z']:
+		for time_format in ['%H:%M:%S%z', '%H:%M:%S.%f%z', '%I:%M:%S %p', '%I:%M:%S.%f %p']:
 			datetime_format = date_format + ' ' + time_format
 			try:
-				datetime_obj = datetime.datetime.strptime(input + '+0000', datetime_format)
+				datetime_obj = datetime.datetime.strptime(input, datetime_format)
+				datetime_obj = datetime_obj.astimezone(tz).replace(tzinfo=None)
 				return datetime_obj
 			except ValueError:
 				continue
@@ -1201,7 +1354,7 @@ def convert_to_bool(input):
 	return None
 
 """
-integer = common.convert_to_str(input)
+string = common.convert_to_str(input)
 * Converts None, booleans, integers, strings, and floats to strings
   Basically, str() but converts None to ''
 """
@@ -1319,21 +1472,45 @@ def get_epoch_ms(dt=None):
 ## Input checking
 
 """
-output, errors = common.check_input([
-	[ "key_name", "str", True, 1, 16],
-	[ "key_name", "str", ['value1', 'value2', ...]],
-	[ "key_name2", "int", False, 1],
-	[ "key_name3", "dict", [
-		[ "key_name4", "str", True, 1, 16],
-		[ "key_name5", "int", False, 1]
-	]]
-], input_structure)
+output, errors = common.check_input(
+	[
+		[ "key_name", "str", True, 1, 16],
+		[ "key_name", "str", ['value1', 'value2', ...]],
+		[ "key_name2", "int", False, 1],
+		[ "key_name3", "dict", [
+			[ "key_name4", "str", True, 1, 16],
+			[ "key_name5", "int", False, 1]
+		]]
+	],
+	input_structure,
+	required_or = [
+		"first",
+		"second",
+		["third-a", "third-b"]
+	]
+)
+
 * [ key_name, field_type, is_required, min_length, max_length ]
+
+Field types:
+	str
+	int
+	boolean
+	dict
+	list
+	datetime
+	date
+	time
+	uuid
+	doc_id
+
 """
-def check_input(field_map, body, allow_none=False, remove_none=False):
+def check_input(field_list, body, allow_none=False, remove_none=False, process_query=False, required_or=None):
 	output = {}
 	errors = []
-	for field in field_map:
+	field_map = {}
+	for field in field_list:
+		# Read args and set variables
 		key = field[0]
 		ftype = field[1]
 		required = False
@@ -1354,6 +1531,22 @@ def check_input(field_map, body, allow_none=False, remove_none=False):
 		if ftype == 'bool':
 			ftype = 'boolean'
 		
+		# Undo query lists into values
+		if process_query:
+			if key in body and type(body[key]) is list and len(body[key]) == 1 and ftype != 'list':
+				body[key] = body[key][0]
+		
+		# Build map of fields
+		field_map[key] = {
+			"type": ftype,
+			"required": required,
+			"min_length": min_length,
+			"max_length": max_length
+		}
+		if sub_map:
+			field_map[key] = sub_map
+		
+		# Check required
 		if key not in body or body[key] is None:
 			if (type(required) is list or required):
 				errors.append("'{}' is required".format(key))
@@ -1364,6 +1557,7 @@ def check_input(field_map, body, allow_none=False, remove_none=False):
 		if remove_none and body[key] is None:
 			continue
 		
+		# Verify type
 		if allow_none and body[key] is None:
 			pass
 		elif ftype == "str":
@@ -1386,6 +1580,18 @@ def check_input(field_map, body, allow_none=False, remove_none=False):
 			if type(body[key]) is not list:
 				errors.append("'{}' must be a list/array".format(key))
 				continue
+		elif ftype == "datetime":
+			if convert_string_to_datetime(body[key]) is None:
+				errors.append("'{}' must be a timestamp (datetime)".format(key))
+				continue
+		elif ftype == "date":
+			if convert_string_to_date(body[key]) is None:
+				errors.append("'{}' must be a date".format(key))
+				continue
+		elif ftype == "time":
+			if convert_string_to_time(body[key]) is None:
+				errors.append("'{}' must be a time".format(key))
+				continue
 		elif ftype == "uuid":
 			if not is_uuid(body[key]):
 				errors.append("'{}' must be a uuid".format(key))
@@ -1395,6 +1601,7 @@ def check_input(field_map, body, allow_none=False, remove_none=False):
 				errors.append("'{}' must be a doc_id".format(key))
 				continue
 		
+		# Verify restrictions and set values
 		if sub_map and ftype in ['str', 'int']:
 			if body[key] not in sub_map:
 				errors.append("'{}' should be one of '{}'.".format(key, "', '".join(sub_map)))
@@ -1402,10 +1609,10 @@ def check_input(field_map, body, allow_none=False, remove_none=False):
 			output[key] = str(body[key])
 		elif ftype == "str":
 			if min_length and (body[key] is None or len(body[key]) < min_length):
-				errors.append("'{}' should be at least {} characters long".format(key, min_length))
+				errors.append("'{}' should not be less than {} characters long".format(key, min_length))
 				continue
 			if body[key] is None or (max_length and len(body[key]) > max_length):
-				errors.append("'{}' should be less than {} characters long".format(key, max_length))
+				errors.append("'{}' should not be greater than {} characters long".format(key, max_length))
 				continue
 			if allow_none and body[key] is None:
 				output[key] = None
@@ -1435,8 +1642,40 @@ def check_input(field_map, body, allow_none=False, remove_none=False):
 					errors.extend(sub_errors)
 			else:
 				output[key] = body[key]
+		elif ftype == "datetime":
+			output[key] = convert_string_to_datetime(body[key])
+		elif ftype == "date":
+			output[key] = convert_string_to_date(body[key])
+		elif ftype == "time":
+			output[key] = convert_string_to_time(body[key])
 		elif ftype in ["uuid", "doc_id"]:
 			output[key] = str(body[key])
+	
+	# process required_or
+	if required_or and type(required_or) is list:
+		found = False
+		for field in required_or:
+			# Handle a list of fields as AND
+			if type(field) is list and len(field):
+				found = True
+				for subfield in field:
+					if subfield not in field_map or subfield not in output:
+						found = False
+						break
+					elif not output[subfield]:
+						found = False
+						break
+			# Handle single field
+			elif field in field_map and field in output:
+				if field_map[field]['type'] == 'boolean':
+					found = True
+					break
+				elif output[field]:
+					found = True
+					break
+		if not found:
+			message = conjunction(required_or, conj='or', quote="'")
+			errors.append("One of the following is required: {}".format(message))
 	return output, errors
 		
 
@@ -1652,8 +1891,12 @@ def cast_args(input={}, specs={}, should_fill=False):
 boolean = common.is_success(response)
 """
 def is_success(response):
-	if type(response) is dict and 'ResponseMetadata' in response:
-		if response['ResponseMetadata'].get('HTTPStatusCode') >= 200 and response['ResponseMetadata'].get('HTTPStatusCode') < 300:
-			return True
+	if type(response) is dict:
+		if 'ResponseMetadata' in response:
+			if response['ResponseMetadata'].get('HTTPStatusCode') >= 200 and response['ResponseMetadata'].get('HTTPStatusCode') < 300:
+				return True
+		elif 'statusCode' in response:
+			if response.get('statusCode') >= 200 and response.get('statusCode') < 300:
+				return True
 	return False
 

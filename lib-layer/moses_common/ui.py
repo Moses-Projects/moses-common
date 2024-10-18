@@ -404,61 +404,82 @@ class Interface:
 		print(text)
 	
 	def title(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(f' {text:s} ', ['blue', 'bold', 'inverse']))
 	
 	def header(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['blue', 'bold', 'underline']))
 	
 	def header2(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['bold', 'underline']))
 	
 	def success(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['green', 'bold']))
 	
 	def dry_run(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['silver'], quote='silver_bg'))
 	
 	def verbose(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['gray'], quote='gray_bg'))
 	
 	# syslog severity 6
 	def info(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['gray'], quote='gray_bg'))
 	
 	# syslog severity 4
 	def warning(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
+		if type(text) is list and text and type(text[0]) is str:
+			text = "\n".join(text)
+		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['olive', 'bold'], quote='olive_bg'))
 	
 	# syslog severity 3
 	def error(self, text=None):
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
+		if not text:
 			return
-		print(self.format_text('ERROR: ' + text, ['maroon', 'bold'], quote='maroon_bg'))
+		if type(text) is list and text and type(text[0]) is str:
+			print(self.format_text('ERROR:', ['maroon', 'bold'], quote='maroon_bg'))
+			for error in text:
+				print(self.format_text('  ' + error, ['maroon', 'bold'], quote='maroon_bg'))
+		else:
+			text = self.convert_slack_to_ansi(text)
+			print(self.format_text(f"ERROR: {text}", ['maroon', 'bold'], quote='maroon_bg'))
 	
 	def usage(self):
 		if not self._usage_message:

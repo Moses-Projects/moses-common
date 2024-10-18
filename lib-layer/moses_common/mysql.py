@@ -21,7 +21,11 @@ class DBH:
 		'password': password
 	})
 	"""
-	def __init__(self, args):
+	def __init__(self, args, ui=None, log_level=5, dry_run=False):
+		self.dry_run = dry_run
+		self.log_level = log_level
+		self.ui = ui or cg_shared.ui.Interface()
+		
 		missing = []
 		self.connect_values = {}
 		for item in ['host', 'username', 'password']:
@@ -29,10 +33,12 @@ class DBH:
 				self.connect_values[item] = args[item]
 			else:
 				missing.append = item
-		if 'db_name' in args:
-			self.connect_values['db_name'] = args['db_name']
+		if 'dbname' in args:
+			self.connect_values['dbname'] = args['dbname']
+		elif 'db_name' in args:
+			self.connect_values['dbname'] = args['db_name']
 		else:
-			self.connect_values['db_name'] = None
+			self.connect_values['dbname'] = None
 		if 'port' in args:
 			self.connect_values['port'] = args['port']
 		else:
@@ -42,9 +48,10 @@ class DBH:
 			raise AttributeError("Missing connection arg(s) ({})".format(', '.join(missing)))
 		
 		db = self.connect_values
+		print("db {}: {}".format(type(db), db))
 		self.conn = pymysql.connect(
 			host = db['host'],
-			database = db['db_name'],
+			database = db['dbname'],
 			user = db['username'],
 			password = db['password'],
 			cursorclass = pymysql.cursors.DictCursor
@@ -79,6 +86,12 @@ class DBH:
 	record = dbh.do(sql)
 	"""
 	def do(self, sql):
+		if self.dry_run:
+			self.ui.dry_run(sql)
+			return 1
+		if self._log_level >= 6:
+			self.ui.body(sql)
+		
 		cursor = self.conn.cursor()
 # 		print("sql {}: {}".format(type(sql), sql))
 		cursor.execute(sql)
@@ -128,8 +141,14 @@ class DBH:
 	def create_database(self, database_name):
 		if self.connect_values['db_name']:
 			return False
+		if self.dry_run:
+			self.ui.dry_run(f"CREATE DATABASE {database_name}")
+			return 1
+		
 		cursor = self.conn.cursor()
 		sql = 'CREATE DATABASE IF NOT EXISTS {} DEFAULT CHARACTER SET utf8 COLLATE utf8_unicode_ci'.format(database_name)
+		if self._log_level >= 6:
+			self.ui.body(sql)
 		cursor.execute(sql)
 		if self.is_database(database_name):
 			return True
@@ -141,8 +160,14 @@ class DBH:
 	def drop_database(self, database_name):
 		if self.connect_values['db_name']:
 			return False
+		if self.dry_run:
+			self.ui.dry_run(f"DROP DATABASE {database_name}")
+			return 1
+		
 		cursor = self.conn.cursor()
 		sql = 'DROP DATABASE IF EXISTS {}'.format(database_name)
+		if self._log_level >= 6:
+			self.ui.body(sql)
 		cursor.execute(sql)
 		if self.is_database(database_name):
 			return False
@@ -154,10 +179,16 @@ class DBH:
 	def create_user(self, username, password):
 		if self.connect_values['db_name']:
 			return False
+		if self.dry_run:
+			self.ui.dry_run(f"CREATE USER {username}")
+			return 1
+		
 		cursor = self.conn.cursor()
 		qusername = self.conn.escape(username)
 		qpassword = self.conn.escape(password)
 		sql = "CREATE USER {}@'%' IDENTIFIED BY {}".format(qusername, qpassword)
+		if self._log_level >= 6:
+			self.ui.body(sql)
 		cursor.execute(sql)
 		if self.is_user(username):
 			return True
@@ -169,9 +200,15 @@ class DBH:
 	def grant_user(self, username, database_name):
 		if self.connect_values['db_name']:
 			return False
+		if self.dry_run:
+			self.ui.dry_run(f"GRANT ALL PRIVILEGES ON {database_name} TO {username}")
+			return 1
+		
 		cursor = self.conn.cursor()
 		qusername = self.conn.escape(username)
 		sql = "GRANT ALL PRIVILEGES ON `{}`.* TO {}@'%'".format(database_name, qusername)
+		if self._log_level >= 6:
+			self.ui.body(sql)
 		cursor.execute(sql)
 		if self.has_grant(username):
 			return True

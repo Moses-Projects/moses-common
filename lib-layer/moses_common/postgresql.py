@@ -26,6 +26,7 @@ class DBH:
 			'password': password,
 			'readonly': boolean
 		},
+		ui=None,
 		log_level=5,
 		dry_run=False
 	)
@@ -33,7 +34,7 @@ class DBH:
 		6: All DO statements
 		7: All SELECT and DO statements
 	"""
-	def __init__(self, args, log_level=5, dry_run=False):
+	def __init__(self, args, ui=None, log_level=5, dry_run=False):
 		self.dry_run = dry_run
 		self.log_level = log_level
 		
@@ -49,10 +50,10 @@ class DBH:
 		if args.get('port'):
 			self.connect_values['port'] = args['port']
 		
-		self._readonly = False
+		self.readonly = False
 		if 'readonly' in args and args['readonly']:
 			print("Enabling readonly")
-			self._readonly = True
+			self.readonly = True
 			if args.get('host_ro'):
 				self.connect_values['host'] = args['host_ro']
 		
@@ -72,8 +73,11 @@ class DBH:
 			logging.error(e)
 			raise ConnectionError("Unable to connect to database {}@{}:{}/{}".format(db['username'], db['host'], db['port'], db['dbname']))
 		
+		self._autocommit = True
+		self.autocommit = True
+		self.table_data = {}
 		self.now = datetime.datetime.utcnow()
-		self.ui = moses_common.ui.Interface()
+		self.ui = ui or cg_shared.ui.Interface()
 	
 	
 	@property
@@ -84,6 +88,49 @@ class DBH:
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
     
+	@property
+	def autocommit(self):
+		return self._autocommit
+	
+	@autocommit.setter
+	def autocommit(self, value):
+		if self.readonly:
+			return
+		if common.convert_to_bool(value):
+			if self._autocommit:
+				return
+			self._conn.commit()
+			self._conn.autocommit = True
+			self._autocommit = True
+		else:
+			if not self._autocommit:
+				return
+			self._conn.commit()
+			self._conn.autocommit = False
+			self._autocommit = False
+    
+	"""
+	dbh.start_session()
+	"""
+	def start_session(self):
+		self.autocommit = False
+	
+	"""
+	dbh.commit_session()
+	"""
+	def commit_session(self):
+		self.autocommit = True
+	
+	"""
+	dbh.rollback_session()
+	"""
+	def rollback_session(self):
+		if self._autocommit:
+			return
+		self._conn.rollback()
+		self._conn.autocommit = True
+		self._autocommit = True
+	
 	"""
 	dbh.close()
 	"""
@@ -239,8 +286,8 @@ class DBH:
 			
 			if column_name not in data:
 				if check_nullable and required and not column['column_default'] and not column['identity_generation']:
-					errors.append(f"'{schema}.{table_name}.{column_name}' is required")
-					raise TypeError(f"'{schema}.{table_name}.{column_name}' is required")
+					errors.append(f"'{schema}.{table_name}.\"{column_name}\"' is required")
+					raise TypeError(f"'{schema}.{table_name}.\"{column_name}\"' is required")
 				continue
 			
 			value = data[column_name]
@@ -257,7 +304,12 @@ class DBH:
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif re.match(r'date', data_type):
-				if value.lower() in ['current_date', 'now()']:
+				if common.is_date(value):
+					insert[column_name] = self._quote_single_value(value.isoformat())
+				elif common.is_datetime(value):
+					date_obj = common.convert_string_to_date(value)
+					insert[column_name] = self._quote_single_value(date_obj.isoformat())
+				elif value.lower() in ['current_date', 'now()']:
 					value = self.get_current_date()
 					insert[column_name] = self._quote_single_value(value)
 				else:
@@ -277,6 +329,15 @@ class DBH:
 					continue
 				if data_type == 'smallint' and (value < -32768 or value > 32767):
 					errors.append(f"'{column_name}' out of range")
+					continue
+				insert[column_name] = self._quote_single_value(value)
+			elif data_type in ['json', 'jsonb']:
+				if common.is_json(value):
+					pass
+				elif type(value) is dict or type(value) is list:
+					value = common.make_json(value)
+				else:
+					errors.append(f"'{column_name}' cannot convert to JSON (table '{schema}.{table_name}')")
 					continue
 				insert[column_name] = self._quote_single_value(value)
 			elif data_type in ['text', 'character', 'character varying']:
@@ -301,7 +362,12 @@ class DBH:
 					if datetime_obj is not None:
 						insert[column_name] = self._quote_single_value(datetime_obj.isoformat())
 			elif re.match(r'time', data_type):
-				if value.lower() in ['current_timestamp', 'current_time', 'now()']:
+				if common.is_time(value):
+					insert[column_name] = self._quote_single_value(value.isoformat())
+				elif common.is_datetime(value):
+					time_obj = common.convert_string_to_time(value)
+					insert[column_name] = self._quote_single_value(time_obj.isoformat())
+				elif value.lower() in ['current_timestamp', 'current_time', 'now()']:
 					value = self.get_current_time()
 					insert[column_name] = self._quote_single_value(value)
 				else:
@@ -318,7 +384,7 @@ class DBH:
 					errors.append(f"'{column_name}' is not an array (table '{schema}.{table_name}')")
 					continue
 				new_array = []
-				if column['udt_name'] == '_text':
+				if column['udt_name'] in ['_text', '_varchar']:
 					for element in value:
 						new_array.append(self._quote_single_value(str(element)))
 					value = 'ARRAY[' + ','.join(new_array) + ']::text[]'
@@ -348,23 +414,26 @@ class DBH:
 			value_list = [value_list]
 		
 		if not len(value_list):
-			return None
+			operator = 'is'
+			value_list = [None]
 		
 		if operator == 'is' or type(value_list[0]) is bool:
 			value = common.convert_to_bool(value_list[0])
-			if value is None:
-				raise TypeError(f"Value for '{key}' must be a boolean")
+			if value is None or value_list[0] is None:
+				value = 'NULL'
 			return '{} IS {}'.format(qkey, value)
 		elif operator == '@>' or operator == '<@':
 			return '{} {} {}'.format(qkey, operator.upper(), self.quote(value_list, quote_arrays=True))
 		elif operator == 'like' or operator == 'ilike':
 			values = []
 			for value in value_list:
+				subvalues = []
 				nvalue = common.normalize(value)
 				value_words = nvalue.split(' ')
 				for word in value_words:
-					values.append('{} {} {}'.format(qkey, operator.upper(), self.quote_like(word)))
-			return self.join_where_conditionals(values, 'and')
+					subvalues.append('{} {} {}'.format(qkey, operator.upper(), self.quote_like(word)))
+				values.append(self.join_where_conditionals(subvalues, 'and'))
+			return self.join_where_conditionals(values, 'or')
 		
 		if len(value_list) > 1:
 			return '{} IN ({})'.format(qkey, ', '.join(self.quote(value_list)))
@@ -513,6 +582,32 @@ class DBH:
 		sql = '(' + ', '.join(names) + ') VALUES ' + ', '.join(values)
 		return sql
 	
+	def get_changes(self, table_name, source, target, schema=None):
+		qsource, serrors = self.quote_for_table(table_name, source, schema=schema, check_nullable=True)
+		qtarget, terrors = self.quote_for_table(table_name, target, schema=schema, check_nullable=True)
+# 		print("qsource {}: {}".format(type(qsource), qsource))
+# 		print("qtarget {}: {}".format(type(qtarget), qtarget))
+		columns = self.get_column_info(table_name, schema=schema)
+		changes = {}
+		for field, value in qsource.items():
+			if field not in columns:
+				continue
+			data_type = columns[field]['data_type'].lower()
+			if field not in qtarget:
+				changes[field] = source[field]
+			elif re.match(r'timestamp', data_type):
+				svalue = common.convert_string_to_datetime(source[field])
+				tvalue = common.convert_string_to_datetime(target[field])
+				if svalue != tvalue:
+					changes[field] = source[field]
+			elif data_type in ['json', 'jsonb']:
+				svalue = common.parse_json(source[field])
+				tvalue = common.parse_json(target[field])
+				if not common.are_alike(svalue, tvalue):
+					changes[field] = source[field]
+			elif value != qtarget[field]:
+				changes[field] = source[field]
+		return changes
 	
 	# Get basic values
 	
@@ -548,8 +643,13 @@ class DBH:
 	"""
 	def get_column_info(self, table_name, schema=None):
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
+		if self.table_data.get(schema) and self.table_data[schema].get(table_name):
+			return self.table_data[schema][table_name]
 		sql = f"SELECT * FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table_name}'"
-		return self.select_as_hash_of_hashes(sql, 'column_name')
+		if schema not in self.table_data:
+			self.table_data[schema] = {}
+		self.table_data[schema][table_name] = self.select_as_hash_of_hashes(sql, 'column_name')
+		return self.table_data[schema][table_name]
 	
 	
 	# Get records
@@ -862,7 +962,7 @@ class DBH:
 		if sql_parts:
 			command = sql_parts.group(1)
 		
-		if self._readonly:
+		if self.readonly:
 			raise ConnectionError("Attempting {command} when set to readonly")
 		
 		cursor = self._conn.cursor()
@@ -882,7 +982,8 @@ class DBH:
 		else:
 			cursor.execute(sql)
 		rowcount = cursor.rowcount
-		self._conn.commit()
+		if self.autocommit:
+			self._conn.commit()
 		cursor.close()
 		return rowcount
 	
@@ -932,7 +1033,7 @@ class DBH:
 			sql = "INSERT INTO {}.{} ({}) VALUES {}".format(schema, table_name, ', '.join(qkey_list), ', '.join(values_list))
 			response = self.do(sql)
 			if self.dry_run:
-				return len(value_list)
+				return len(insert_data)
 			return response
 		
 		# Individual inserts
@@ -1060,7 +1161,7 @@ class DBH:
 			num_of_inserts = self.insert(table_name, insert_records, schema=schema, quote_keys=quote_keys, defaults=defaults)
 		num_of_updates = 0
 		if update_records:
-			num_of_updates = dbh.update(table_name, key_name, update_records, schema=schema, quote_keys=quote_keys)
+			num_of_updates = self.update(table_name, key_name, update_records, schema=schema, quote_keys=quote_keys)
 		return num_of_inserts, num_of_updates
 	
 	"""
@@ -1100,9 +1201,16 @@ class DBH:
 		insert_records = []
 		for record in data:
 			found = False
+			# Look for existing combinations in the table
 			for existing in existing_records:
 				if record[primary_key] == existing[primary_key] and record[secondary_key] == existing[secondary_key]:
 					found = True
+					break
+			# Look for duplicates already added for inserting
+			for existing in insert_records:
+				if record[primary_key] == existing[primary_key] and record[secondary_key] == existing[secondary_key]:
+					found = True
+					break
 			if not found:
 				insert_records.append(record)
 		num_of_inserts = self.insert(table_name, insert_records, schema=schema, quote_keys=quote_keys, defaults=defaults)
@@ -1252,7 +1360,7 @@ WHERE n.nspname = {} AND c.relname = {}
 		if role_oid:
 			return True
 		
-		if self._readonly:
+		if self.readonly:
 			raise ConnectionError("Attempting CREATE when set to readonly")
 		
 		sql = "CREATE ROLE {} WITH LOGIN PASSWORD %s".format(role_name)
@@ -1279,7 +1387,7 @@ WHERE n.nspname = {} AND c.relname = {}
 		if not role_oid:
 			return True
 		
-		if self._readonly:
+		if self.readonly:
 			raise ConnectionError("Attempting DROP when set to readonly")
 		
 		sql = "DROP ROLE {}".format(role_name)
