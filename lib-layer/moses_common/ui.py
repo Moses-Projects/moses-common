@@ -499,20 +499,57 @@ class Interface:
 				input = re.sub(r': ([0-9.-]+)', lambda m: ': ' + self.format_text(m.group(1), 'maroon'), str(input))
 				input = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(input))
 		print(input)
-
-	def format_table(self, records, fields=None, frame=False):
+	
+	
+	def format_hash_list(self, records, fields=None):
 		records = common.to_list(records)
 		if not fields:
-			fields = list(records.keys())
+			fields = list(records[0].keys())
+		
+		## Find field lengths and types
+		max_field_length = 1
+		for field in fields:
+			if len(field) > max_field_length:
+				max_field_length = len(field)
+		max_value_length = 1
+		for record in records:
+			for field in fields:
+				length = len(str(record.get(field)))
+				if length > max_value_length:
+					max_value_length = length
+		
+		## Assemble output
+		output = ""
+		hr = "-" * (max_field_length + 3 + max_value_length)
+		for record in records:
+			output += hr + "\n"
+			for field in fields:
+				output += f"{field:>{max_field_length}} : {record[field]:<{max_value_length}}\n"
+		output += hr
+		return output
+	
+	def format_table(self, records, fields=None,
+			include_frame=False,
+			include_frame_hr=False,
+			include_header=True
+		):
+		records = common.to_list(records)
+		if not records:
+			return ""
+		if not fields:
+			fields = list(records[0].keys())
 		divider = " "
-		if frame:
+		if include_frame:
 			divider = "|"
 		
 		## Find field lengths and types
 		field_info = {}
 		for field in fields:
+			length = 1
+			if include_header and len(field):
+				length = len(field)
 			field_info[field] = {
-				"length": len(field),
+				"length": length,
 				"type": "numeric"
 			}
 		for record in records:
@@ -524,24 +561,31 @@ class Interface:
 					field_info[field]['type'] = 'string'
 		
 		## Assemble output
+		output = ""
+		
 		# Add header
-		output = divider
-		cnt = 0
-		for field in fields:
-			cnt += 1
-			if cnt > 1:
-				output += divider
-			
-			length = field_info[field]['length']
-			if field_info[field]['type'] == 'numeric':
-				output += f"{field:>{length}}"
-			else:
-				output += f"{field:<{length}}"
-		output += divider
-		output = self.format_text(output, 'underline')
-		output += "\n"
+		if include_header:
+			if include_frame and include_frame_hr:
+				output += self.format_table_hr(field_info, divider) + "\n"
+			output += divider
+			cnt = 0
+			for field in fields:
+				cnt += 1
+				if cnt > 1:
+					output += divider
+				
+				length = field_info[field]['length']
+				if field_info[field]['type'] == 'numeric':
+					output += f"{field:>{length}}"
+				else:
+					output += f"{field:<{length}}"
+			output += divider
+			output = self.format_text(output, 'underline')
+			output += "\n"
 		
 		# Add records
+		if include_frame and include_frame_hr:
+			output += self.format_table_hr(field_info, divider) + "\n"
 		while records:
 			record = records.pop(0)
 			output += divider
@@ -551,10 +595,27 @@ class Interface:
 				if cnt > 1:
 					output += divider
 				length = field_info[field]['length']
-				value = record.get(field, '')
+				value = common.convert_to_str(record.get(field, ''))
 				output += f"{value:{length}}"
 			output += divider
 			if records:
 				output += "\n"
+		if include_frame and include_frame_hr:
+			output += "\n" + self.format_table_hr(field_info, divider)
 		return output
-
+	
+	def format_table_hr(self, field_info, divider=""):
+		output = ""
+		divider = re.sub(r' ', '-', divider)
+		mid_separator = re.sub(r'\|', '+', divider)
+		left_separator = re.sub(r'^-*\|', '+', divider)
+		right_separator = re.sub(r'\|-*$', '+', divider)
+		
+		for field, definition in field_info.items():
+			if not output:
+				output += left_separator + '-' * definition['length']
+			else:
+				output += mid_separator + '-' * definition['length']
+		output += right_separator
+		
+		return output

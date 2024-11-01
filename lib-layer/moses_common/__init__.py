@@ -1,4 +1,4 @@
-# print("Loaded APIs init")
+# print("Loaded common init")
 
 import base64
 from charset_normalizer import from_bytes
@@ -7,6 +7,7 @@ import csv
 import datetime
 import decimal
 import gzip
+import io
 import json
 import math
 import os
@@ -174,6 +175,23 @@ base64_string = common.make_base64(string)
 def make_base64(text):
 	b64_bytes = base64.b64encode(text.encode('utf-8'))
 	return b64_bytes.decode('utf-8')
+
+
+"""
+csv_text = common.make_csv(python_object)
+"""
+def make_csv(python_object, fields=None):
+	new_csvfile = io.StringIO()
+	if not fields:
+		fields = python_object[0].keys()
+	
+	csv_writer = csv.DictWriter(new_csvfile, fieldnames=fields)
+	csv_writer.writeheader()
+	csv_writer.writerows(python_object)
+	output = new_csvfile.getvalue()
+	new_csvfile.close()
+	
+	return output
 
 
 """
@@ -895,6 +913,31 @@ def conjunction(orig_words, conj='and', quote=''):
 	elif len(words) > 2:
 		return ', '.join(words[:len(words)-1]) + ',' + conj + words[-1]
 
+def parse_quoted_args(input_string):
+	dquote_match = re.compile(r'^"(.*?)"\s*')
+	squote_match = re.compile(r"^'(.*?)'\s*")
+	word_match = re.compile(r'^(\S+)\s*')
+	args = []
+	while input_string:
+		dquote_parts = re.match(dquote_match, input_string)
+		if dquote_parts:
+			args.append(dquote_parts.group(1))
+			input_string = re.sub(dquote_match, '', input_string, 1)
+			continue
+		squote_parts = re.match(squote_match, input_string)
+		if squote_parts:
+			args.append(squote_parts.group(1))
+			input_string = re.sub(squote_match, '', input_string, 1)
+			continue
+		word_parts = re.match(word_match, input_string)
+		if word_parts:
+			args.append(word_parts.group(1))
+			input_string = re.sub(word_match, '', input_string, 1)
+			continue
+		if not re.match(r'\S', input_string):
+			break
+	return args
+
 def get_first_matching_words(titles):
 	titles = titles.copy()
 	first = titles.pop(0)
@@ -931,6 +974,66 @@ def match_capitalization(original, word):
 		return word.capitalize()
 	else:
 		return word.lower()
+
+"""
+summary = common.summarize(html, limit, type='word')
+summary = common.summarize(html, limit, type='character|word|sentence|paragraph')
+summary = common.summarize(html, limit, type='word', include_ellipsis=True, remove_newlines=False)
+"""
+def truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=False):
+	output = ''
+	cnt = 0
+	
+	if remove_newlines:
+		text = re.sub(r'\s*\n+\s*', ' ', text, 0)
+	text = re.sub(r'\s+', ' ', text.rstrip(), 0)
+	
+	if type == 'character':
+		if len(text) <= limit:
+			return text
+		if include_ellipsis:
+			output = text[0:limit-1]
+			if len(output) != len(text):
+				output += '…';
+		else:
+			output = text[0:limit]
+		return output
+	
+	while text:
+		if cnt >= limit:
+			break
+		cnt += 1
+		
+		part = ''
+		if type == 'paragraph':
+			pmatch = re.compile(r'^(.+?\n+)')
+			parts = re.match(pmatch, text)
+			if parts:
+				part = parts.group(1)
+				text = re.sub(pmatch, '', text, 1)
+		elif type == 'sentence':
+			pmatch = re.compile(r'^(.+?[\.!\?]+(?:\s+|&\w+;))')
+			parts = re.match(pmatch, text)
+			if parts:
+				part = parts.group(1)
+				text = re.sub(pmatch, '', text, 1)
+		elif type == 'word':
+			pmatch = re.compile(r'^(.+?\s+)')
+			parts = re.match(pmatch, text)
+			if parts:
+				part = parts.group(1)
+				text = re.sub(pmatch, '', text, 1)
+		if not part:
+			output += text
+			text = ""
+			break
+		output += part
+	
+	output = output.rstrip()
+	if include_ellipsis and text:
+		output += '…'
+	return output
+
 
 ## Number handling
 

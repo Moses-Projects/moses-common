@@ -37,6 +37,8 @@ class DBH:
 	def __init__(self, args, ui=None, log_level=5, dry_run=False):
 		self.dry_run = dry_run
 		self.log_level = log_level
+		self.ui = ui or moses_common.ui.Interface()
+		self.now = datetime.datetime.utcnow()
 		
 		missing = []
 		self.connect_values = {}
@@ -44,7 +46,7 @@ class DBH:
 			if args.get(item):
 				self.connect_values[item] = args[item]
 			else:
-				missing.append = item
+				missing.append(item)
 		
 		self.connect_values['port'] = 5432
 		if args.get('port'):
@@ -58,7 +60,7 @@ class DBH:
 				self.connect_values['host'] = args['host_ro']
 		
 		if len(missing):
-			raise AttributeError("Missing connection arg(s) ({})".format(', '.join(missing)))
+			raise AttributeError("Missing {}: {}".format(common.plural(len(missing), 'connection arg'), common.conjunction(missing, conj='and', quote="'")))
 		
 		db = self.connect_values
 		try:
@@ -70,14 +72,11 @@ class DBH:
 				password = db['password']
 			)
 		except psycopg2.DatabaseError as e:
-			logging.error(e)
-			raise ConnectionError("Unable to connect to database {}@{}:{}/{}".format(db['username'], db['host'], db['port'], db['dbname']))
+			raise ConnectionError("Unable to connect to postgres database {}@{}:{}:{}".format(db['username'], db['host'], db['port'], db['dbname']))
 		
 		self._autocommit = True
 		self.autocommit = True
 		self.table_data = {}
-		self.now = datetime.datetime.utcnow()
-		self.ui = ui or cg_shared.ui.Interface()
 	
 	
 	@property
@@ -316,7 +315,7 @@ class DBH:
 					date_obj = common.convert_string_to_date(value)
 					if date_obj is not None:
 						insert[column_name] = self._quote_single_value(date_obj.isoformat())
-			elif data_type in ['decial', 'numeric', 'double precision']:
+			elif data_type in ['decimal', 'numeric', 'double precision']:
 				value = common.convert_to_float(value)
 				if value is None:
 					errors.append(f"'{column_name}' cannot convert to a float (table '{schema}.{table_name}')")
@@ -641,15 +640,22 @@ class DBH:
 	"""
 	column_hash = dbh.get_column_info(table_name, schema=None)
 	"""
-	def get_column_info(self, table_name, schema=None):
+	def get_column_info(self, table_name, schema=None, record_type='dict'):
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		if self.table_data.get(schema) and self.table_data[schema].get(table_name):
 			return self.table_data[schema][table_name]
 		sql = f"SELECT * FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table_name}'"
 		if schema not in self.table_data:
 			self.table_data[schema] = {}
-		self.table_data[schema][table_name] = self.select_as_hash_of_hashes(sql, 'column_name')
-		return self.table_data[schema][table_name]
+		column_map = self.select_as_hash_of_hashes(sql, 'column_name')
+		self.table_data[schema][table_name] = column_map
+		
+		if record_type == 'list':
+			new_column_list = []
+			for field, definition in column_map.items():
+				new_column_list.append(definition)
+			return new_column_list
+		return column_map
 	
 	
 	# Get records
@@ -657,7 +663,7 @@ class DBH:
 	"""
 	record = dbh.select_base(sql)
 	"""
-	def select_base(self, sql, args=None):
+	def select_base(self, sql, args=None, record_type='list'):
 		if self._log_level >= 7:
 			print(sql)
 		
@@ -666,9 +672,25 @@ class DBH:
 			cursor.execute(sql, tuple(args))
 		else:
 			cursor.execute(sql)
-		records = cursor.fetchall()
+		rows = cursor.fetchall()
+		columns = None
+		if record_type == 'hash':
+			columns = [desc[0] for desc in cursor.description]
 		cursor.close()
-		return list(records)
+		
+		# Return list of lists
+		if record_type == 'list':
+			return list(rows)
+		
+		# Return list of hashes
+		records = []
+		for row in rows:
+			record = {}
+			for i in range(len(columns)):
+				record[columns[i]] = row[i]
+			records.append(record)
+		return records
+		
 	
 	"""
 	boolean = dbh.exists(table_name, id_name, id_value, schema=None)
@@ -857,25 +879,7 @@ class DBH:
 	[ { record1 }, { record2 }, ... ]
 	"""
 	def select_as_list_of_hashes(self, sql, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		rows = cursor.fetchall()
-		columns = [desc[0] for desc in cursor.description]
-		cursor.close()
-		
-		records = []
-		for row in rows:
-			record = {}
-			for i in range(len(columns)):
-				record[columns[i]] = row[i]
-			records.append(record)
-		return records
+		return self.select_base(sql, args, record_type='hash')
 	
 	"""
 	Returns each record as a hash in a hash using the specified key as the hash key.
@@ -889,24 +893,11 @@ class DBH:
 	}
 	"""
 	def select_as_hash_of_hashes(self, sql, key, args=None):
-		if self._log_level >= 7:
-			print(sql)
-		
-		cursor = self._conn.cursor()
-		if args:
-			cursor.execute(sql, tuple(args))
-		else:
-			cursor.execute(sql)
-		rows = cursor.fetchall()
-		columns = [desc[0] for desc in cursor.description]
-		cursor.close()
+		rows = self.select_base(sql, args, record_type='hash')
 		
 		records = {}
 		for row in rows:
-			record = {}
-			for i in range(len(columns)):
-				record[columns[i]] = row[i]
-			records[record[key]] = record
+			records[row[key]] = row
 		return records
 	
 	"""
@@ -1252,6 +1243,29 @@ class DBH:
 			schema = parts[0]
 			table_name = parts[1]
 		return schema, table_name
+	
+	"""
+	schema_list = dbh.get_schema_list()
+	"""
+	def get_schema_list(self):
+		return self.select_column(f"SELECT schema_name FROM information_schema.schemata ORDER BY schema_name")
+	
+	"""
+	schema = dbh.get_table_schema(table_name)
+	"""
+	def get_table_schema(self, table_name):
+		qtable = self.quote(table_name)
+		schemas = self.select_column(f"SELECT table_schema FROM information_schema.tables WHERE table_name = {qtable} ORDER BY table_name")
+		if len(schemas) == 1:
+			return schemas[0]
+		return None
+	
+	"""
+	table_list = dbh.get_table_list(schema)
+	"""
+	def get_table_list(self, schema='public'):
+		qschema = self.quote(schema)
+		return self.select_column(f"SELECT table_name FROM information_schema.tables WHERE table_schema = {qschema} ORDER BY table_name")
 	
 	"""
 	boolean = dbh.is_table(table_name, schema=None)
