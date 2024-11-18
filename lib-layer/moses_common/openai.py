@@ -52,7 +52,7 @@ class OpenAI:
 	@openai_api_key.setter
 	def openai_api_key(self, value=None):
 		if type(value) is str:
-			if not re.match(r'sk-[A-Za-z0-9]{48}', value):
+			if not re.match(r'(sk-[A-Za-z0-9]{48}|sk-proj-[A-Za-z0-9_-]{156}$)', value):
 				raise ValueError("Invalid API key format")
 			self._openai_api_key = value
 	
@@ -85,7 +85,7 @@ class GPT(OpenAI):
 	"""
 	def __init__(self, openai_api_key=None, model=None, log_level=5, dry_run=False):
 		super().__init__(openai_api_key=openai_api_key, log_level=log_level, dry_run=dry_run)
-		self.model = model or 'gpt-4o'
+		self.model = model or 'gpt-4o-mini'
 		
 	
 	@property
@@ -94,12 +94,12 @@ class GPT(OpenAI):
 	
 	@model.setter
 	def model(self, value):
-		if re.match(r'gpt-3', value):
-			self._model = 'gpt-3.5-turbo'
-		elif value == 'gpt-4o':
+		if value in ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'o1-mini']:
+			self._model = value
+		elif re.match(r'gpt-4', value):
 			self._model = 'gpt-4o'
 		else:
-			self._model = 'gpt-4'
+			self._model = 'gpt-4o-mini'
 	
 	@property
 	def label(self):
@@ -111,7 +111,7 @@ class GPT(OpenAI):
 			return "GPT 4"
 	
 	"""
-	gpt.chat(prompt)
+	answer = gpt.chat(prompt)
 	"""
 	def chat(self, prompt, strip_newlines=False, strip_double_quotes=False):
 		if self.log_level >= 7:
