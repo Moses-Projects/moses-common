@@ -1,0 +1,42 @@
+---
+phonetics:
+  AA0: o       # odd       AA D
+  AE0: a       # at        AE T
+  AH0: u       # hut       HH AH T
+  AO0: ou      # ought     AO T
+  AW0: ao      # cow       K AW
+  AY0: ai      # hide      HH AY D
+  EH0: e       # Ed        EH D
+  ER0: ur      # hurt      HH ER T
+  EY0: é       # ate       EY T
+  IH0: i       # it        IH T
+  IY0: ea      # eat       IY T
+  OW0: oa      # oat       OW T
+  OY0: oy      # toy       T OY
+  UH0: oo      # hood      HH UH D
+  UW0: ó       # two       T UW
+  
+  B:   b       # be        B IY
+  CH:  tch     # cheese    CH IY Z
+  D:   d       # dee       D IY
+  DH:  th      # thee      DH IY
+  F:   f       # fee       F IY
+  G:   g       # green     G R IY N
+  HH:  h       # he        HH IY
+  JH:  g       # gee       JH IY
+  K:   c       # key       K IY
+  L:   l       # lee       L IY
+  M:   m       # me        M IY
+  N:   n       # knee      N IY
+  NG:  ng      # ping      P IH NG
+  P:   p       # pee       P IY
+  R:   r       # read      R IY D
+  S:   s       # sea       S IY
+  SH:  sh      # she       SH IY
+  T:   t       # tea       T IY
+  TH:  th      # theta     TH EY T AH
+  V:   v       # vee       V IY
+  W:   v       # we        W IY
+  Y:   í       # yield     Y IY L D
+  Z:   s       # zee       Z IY
+  ZH:  s       # seizure   S IY ZH ER

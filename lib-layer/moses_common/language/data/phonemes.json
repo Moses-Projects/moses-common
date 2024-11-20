@@ -1,0 +1,283 @@
+{
+	"AA": [
+		{ "phoneme": "aa", "not_tail": "A" },
+		{ "phoneme": "ah", "not_tail": "H" },
+		{ "phoneme": "au", "not_tail": "U" },
+		{ "phoneme": "aw", "not_tail": "W" },
+		{ "phoneme": "a" },
+		{ "phoneme": "e" },
+		{ "phoneme": "i" },
+		{ "phoneme": "ou", "not_tail": "U" },
+		{ "phoneme": "o" }
+	],
+	"AE": [
+		{ "phoneme": "ae", "not_tail": "E" },
+		{ "phoneme": "a" },
+		{ "phoneme": "eah", "not_tail": "H" },
+		{ "phoneme": "ha" }
+	],
+	"AH": [
+		{ "phoneme": "ah", "not_tail": "E" },
+		{ "phoneme": "a" },
+		{ "phoneme": "e" },
+		{ "phoneme": "io", "not_tail": "O" },
+		{ "phoneme": "i" },
+		{ "phoneme": "ou", "not_tail": "U" },
+		{ "phoneme": "o" },
+		{ "phoneme": "u" },
+		{ "phoneme": "" }
+	],
+	"AO": [
+		{ "phoneme": "ah", "not_tail": "E" },
+		{ "phoneme": "al", "not_tail": "L" },
+		{ "phoneme": "augh", "not_tail": "G" },
+		{ "phoneme": "au", "not_tail": "U" },
+		{ "phoneme": "aw", "not_tail": "W" },
+		{ "phoneme": "a" },
+		{ "phoneme": "eu", "not_tail": "E" },
+		{ "phoneme": "or", "not_tail": "R" },
+		{ "phoneme": "o" }
+	],
+	"AW": [
+		{ "phoneme": "ao", "not_tail": "O" },
+		{ "phoneme": "au", "not_tail": "U" },
+		{ "phoneme": "ough", "not_tail": "G" },
+		{ "phoneme": "ou", "not_tail": "U" },
+		{ "phoneme": "ow", "not_tail": "W" },
+		{ "phoneme": "o" }
+	],
+	"AY": [
+		{ "phoneme": "aj", "not_tail": "J" },
+		{ "phoneme": "ay", "not_tail": "Y" },
+		{ "phoneme": "a" },
+		{ "phoneme": "eigh", "not_tail": "G" },
+		{ "phoneme": "ei", "not_tail": "I" },
+		{ "phoneme": "igh", "not_tail": "G" },
+		{ "phoneme": "i" },
+		{ "phoneme": "uy", "not_tail": "Y" },
+		{ "phoneme": "y" }
+	],
+	"B": [
+		{ "phoneme": "bb" },
+		{ "phoneme": "bh", "not_tail": "H" },
+		{ "phoneme": "b" }
+	],
+	"CH": [
+		{ "phoneme": "cc", "not_tail": "C" },
+		{ "phoneme": "ch" },
+		{ "phoneme": "cz", "not_tail": "Z" },
+		{ "phoneme": "c" },
+		{ "phoneme": "tch" },
+		{ "phoneme": "tsch", "not_tail": "C" },
+		{ "phoneme": "tsh", "not_tail": "S" },
+		{ "phoneme": "t" }
+	],
+	"D": [
+		{ "phoneme": "dd", "not_tail": "D" },
+		{ "phoneme": "d" },
+		{ "phoneme": "ed" }
+	],
+	"DH": [
+		{ "phoneme": "th" }
+	],
+	"EH": [
+		{ "phoneme": "ai", "not_tail": "I" },
+		{ "phoneme": "a" },
+		{ "phoneme": "ea", "not_tail": "A" },
+		{ "phoneme": "eh", "not_tail": "H" },
+		{ "phoneme": "e" }
+	],
+	"ER": [
+		{ "phoneme": "arr", "not_tail": "R" },
+		{ "phoneme": "ar" },
+		{ "phoneme": "err", "not_tail": "R" },
+		{ "phoneme": "er" },
+		{ "phoneme": "irr", "not_tail": "R" },
+		{ "phoneme": "ir" },
+		{ "phoneme": "orr", "not_tail": "R" },
+		{ "phoneme": "or" },
+		{ "phoneme": "r" },
+		{ "phoneme": "urr", "not_tail": "R" },
+		{ "phoneme": "ur" }
+	],
+	"EY": [
+		{ "phoneme": "ai", "not_tail": "I" },
+		{ "phoneme": "ay", "not_tail": "Y" },
+		{ "phoneme": "a" },
+		{ "phoneme": "ea", "not_tail": "A" },
+		{ "phoneme": "ey", "not_tail": "Y" },
+		{ "phoneme": "e" }
+	],
+	"F": [
+		{ "phoneme": "ff", "not_tail": "F" },
+		{ "phoneme": "f" },
+		{ "phoneme": "gh" },
+		{ "phoneme": "ph" },
+		{ "phoneme": "v" },
+		{ "phoneme": "w" }
+	],
+	"G": [
+		{ "phoneme": "gh", "not_tail": "H" },
+		{ "phoneme": "g" },
+		{ "phoneme": "qu", "not_tail": "U" }
+	],
+	"GZ": [
+		{ "phoneme": "x" }
+	],
+	"HH": [
+		{ "phoneme": "gh" },
+		{ "phoneme": "g" },
+		{ "phoneme": "h" },
+		{ "phoneme": "j" },
+		{ "phoneme": "wh", "not_tail": "H" },
+		{ "phoneme": "" }
+	],
+	"IH": [
+		{ "phoneme": "ea", "not_tail": "A" },
+		{ "phoneme": "e" },
+		{ "phoneme": "i" },
+		{ "phoneme": "o" },
+		{ "phoneme": "y" },
+		{ "phoneme": "'" }
+	],
+	"IY": [
+		{ "phoneme": "ae", "not_tail": "E" },
+		{ "phoneme": "ea", "not_tail": "A" },
+		{ "phoneme": "e" },
+		{ "phoneme": "ey", "not_tail": "Y" },
+		{ "phoneme": "ie", "not_tail": "E" },
+		{ "phoneme": "iy", "not_tail": "A" },
+		{ "phoneme": "i" },
+		{ "phoneme": "y" }
+	],
+	"JH": [
+		{ "phoneme": "dg" },
+		{ "phoneme": "drz", "not_tail": "Z" },
+		{ "phoneme": "gg", "not_tail": "G" },
+		{ "phoneme": "g" },
+		{ "phoneme": "j" },
+		{ "phoneme": "y" }
+	],
+	"K": [
+		{ "phoneme": "ch", "not_tail": "H" },
+		{ "phoneme": "ck", "not_tail": "K" },
+		{ "phoneme": "c" },
+		{ "phoneme": "kh", "not_tail": "H" },
+		{ "phoneme": "k" },
+		{ "phoneme": "q" }
+	],
+	"KS": [
+		{ "phoneme": "x" }
+	],
+	"L": [
+		{ "phoneme": "ll", "not_tail": "L" },
+		{ "phoneme": "l" }
+	],
+	"M": [
+		{ "phoneme": "mm", "not_tail": "M" },
+		{ "phoneme": "m" }
+	],
+	"N": [
+		{ "phoneme": "nn", "not_tail": "N" },
+		{ "phoneme": "nt", "not_tail": "T" },
+		{ "phoneme": "n" }
+	],
+	"NG": [
+		{ "phoneme": "ng" },
+		{ "phoneme": "n" }
+	],
+	"OW": [
+		{ "phoneme": "oe", "not_tail": "E" },
+		{ "phoneme": "ow", "not_tail": "W" },
+		{ "phoneme": "o" }
+	],
+	"OY": [
+		{ "phoneme": "eu", "not_tail": "U" },
+		{ "phoneme": "oi", "not_tail": "I" },
+		{ "phoneme": "oj", "not_tail": "J" },
+		{ "phoneme": "oy", "not_tail": "Y" },
+		{ "phoneme": "uy", "not_tail": "Y" }
+	],
+	"P": [
+		{ "phoneme": "gh", "not_tail": "P" },
+		{ "phoneme": "pp", "not_tail": "P" },
+		{ "phoneme": "p" }
+	],
+	"R": [
+		{ "phoneme": "rh", "not_tail": "H" },
+		{ "phoneme": "rrh", "not_tail": "H" },
+		{ "phoneme": "rr", "not_tail": "R" },
+		{ "phoneme": "r" }
+	],
+	"S": [
+		{ "phoneme": "c" },
+		{ "phoneme": "es" },
+		{ "phoneme": "sc", "not_tail": "C" },
+		{ "phoneme": "ss", "not_tail": "S" },
+		{ "phoneme": "s" },
+		{ "phoneme": "z" },
+		{ "phoneme": "'s" }
+	],
+	"SH": [
+		{ "phoneme": "ch" },
+		{ "phoneme": "c" },
+		{ "phoneme": "sch" },
+		{ "phoneme": "sh", "not_tail": "H" },
+		{ "phoneme": "sz" },
+		{ "phoneme": "t" }
+	],
+	"T": [
+		{ "phoneme": "dt", "not_tail": "T" },
+		{ "phoneme": "ed" },
+		{ "phoneme": "tt", "not_tail": "T" },
+		{ "phoneme": "t" }
+	],
+	"TH": [
+		{ "phoneme": "c" },
+		{ "phoneme": "th", "not_tail": "H" }
+	],
+	"UH": [
+		{ "phoneme": "eu", "not_tail": "U" },
+		{ "phoneme": "oo", "not_tail": "O" },
+		{ "phoneme": "u" }
+	],
+	"UW": [
+		{ "phoneme": "ew" },
+		{ "phoneme": "oo", "not_tail": "O" },
+		{ "phoneme": "ou", "not_tail": "U" },
+		{ "phoneme": "o" },
+		{ "phoneme": "u" }
+	],
+	"V": [
+		{ "phoneme": "f" },
+		{ "phoneme": "ph" },
+		{ "phoneme": "vv", "not_tail": "V" },
+		{ "phoneme": "v" },
+		{ "phoneme": "w" }
+	],
+	"W": [
+		{ "phoneme": "ju", "not_tail": "U" },
+		{ "phoneme": "o" },
+		{ "phoneme": "u" },
+		{ "phoneme": "wh", "not_tail": "H" },
+		{ "phoneme": "w" }
+	],
+	"Y": [
+		{ "phoneme": "i" },
+		{ "phoneme": "y" },
+		{ "phoneme": "" }
+	],
+	"Z": [
+		{ "phoneme": "s" },
+		{ "phoneme": "zz", "not_tail": "Z" },
+		{ "phoneme": "z" }
+	],
+	"ZH": [
+		{ "phoneme": "g" },
+		{ "phoneme": "sh", "not_tail": "H" },
+		{ "phoneme": "ss", "not_tail": "S" },
+		{ "phoneme": "s" },
+		{ "phoneme": "zh", "not_tail": "H" },
+		{ "phoneme": "z" }
+	]
+}

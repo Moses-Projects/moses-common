@@ -444,9 +444,26 @@ def write_file(filepath, data, format=None, make_dir=False):
 		else:
 			return False
 	filepath = os.path.expanduser(filepath)
+	if make_dir:
+		base_dir = os.path.dirname(filepath)
+		os.makedirs(base_dir, exist_ok=True)
+	
 	with open(filepath, "w") as file:
 		file.write(text)
 		return True
+
+def get_script_name():
+	script_name = os.path.basename(sys.modules['__main__'].__file__)
+	if re.search(r'\.\w+$', script_name):
+		script_name = re.sub(r'\.\w+$', '', script_name)
+	return script_name
+
+def get_storage_dir(name=None):
+	base_dir = os.environ.get('HOME', '')
+	if not name:
+		name = get_script_name()
+	script_path = f"{base_dir}/.moses_common/{name}"
+	return script_path
 
 """
 data = common.read_cache(filename, days_to_expire)
@@ -456,18 +473,11 @@ def read_cache(filepath, days):
 	if not os.path.isfile(filepath):
 		return None
 	age = get_file_age(filepath, file_checked=True)
-	print("age {}: {}".format(type(age), age))
+# 	print("age {}: {}".format(type(age), age))
 	if convert_to_float(days) < get_file_age(filepath, file_checked=True):
 		return None
 	
 	return read_file(filepath, file_checked=True)
-
-def _get_default_config_filename():
-	if 'HOME' in os.environ:
-		filename = re.sub(r'\.\w+$', '', os.path.basename(sys.modules['__main__'].__file__))
-		return '{}/.{}.cfg'.format(os.environ['HOME'], filename)
-	filename = re.sub(r'\.\w+$', '', sys.modules['__main__'].__file__)
-	return '{}.cfg'.format(filename)
 
 """
 settings = common.read_config()
@@ -475,7 +485,7 @@ settings = common.read_config(filename)
 """
 def read_config(filename=None):
 	if not filename:
-		filename = _get_default_config_filename()
+		filename = get_storage_dir() + f"/settings.cfg"
 	filename = os.path.expanduser(filename)
 	
 	if not os.path.isfile(filename):
@@ -489,7 +499,8 @@ common.save_config(data, filename)
 """
 def save_config(data, filename=None):
 	if not filename:
-		filename = _get_default_config_filename()
+		os.makedirs(get_storage_dir(), exist_ok=True)
+		filename = get_storage_dir() + f"/settings.cfg"
 	filename = os.path.expanduser(filename)
 	
 	# Read previous settings
@@ -788,7 +799,7 @@ def generate_uuid():
 """
 normalized_text = common.normalize(text)
 """
-def normalize(text, strip_single_chars=True):
+def normalize(text, strip_single_chars=True, delimiter=' '):
 	if type(text) is not str:
 		return text
 	input = text.lower()
@@ -802,7 +813,7 @@ def normalize(text, strip_single_chars=True):
 		if strip_single_chars and len(word) <= 1:
 			continue
 		new_words.append(word)
-	return ' '.join(new_words)
+	return delimiter.join(new_words)
 
 def convert_to_ascii(unicode):
 	return unidecode.unidecode(unicode)
@@ -976,9 +987,9 @@ def match_capitalization(original, word):
 		return word.lower()
 
 """
-summary = common.summarize(html, limit, type='word')
-summary = common.summarize(html, limit, type='character|word|sentence|paragraph')
-summary = common.summarize(html, limit, type='word', include_ellipsis=True, remove_newlines=False)
+summary = common.truncate(text, limit, type='word')
+summary = common.truncate(text, limit, type='character|word|sentence|paragraph')
+summary = common.truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=False)
 """
 def truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=False):
 	output = ''
@@ -1818,6 +1829,12 @@ def is_lambda():
 # Called as a script
 def is_cli():
 	return not is_lambda()
+
+# Called as a BBEdit script
+def is_bbedit():
+	if not is_lambda() and os.environ.get('BBEDIT_PID'):
+		return True
+	return False
 
 # Running locally on a client machine
 def is_local():

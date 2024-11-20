@@ -1,0 +1,42 @@
+Here's a list of the Spanish letters or combinations of letters that most closely represent the specified English sounds:
+
+- **o in odd**: **o**
+- **a in at**: **a**
+- **u in hut**: **a** (in some dialects, more of a "u" sound is represented by "u" as well, but "a" can sometimes suffice)
+- **ou in ought**: **ou** (not common; “o” might work depending on context)
+- **ow in cow**: **au**
+- **i in hide**: **ai** or **i**
+- **b in be**: **b**
+- **ch in cheese**: **ch**
+- **d in dee**: **d**
+- **th in thee**: **d** (Spanish does not have a direct equivalent for the voiced "th"; it often uses "d" instead)
+- **e in Ed**: **e**
+- **ur in hurt**: **er** or **o** (Spanish does not have an exact equivalent; "ur" can be approximated by "or" in some words)
+- **a in ate**: **e**
+- **f in fee**: **f**
+- **g in green**: **g** (before "e" or "i" it can sound like "h")
+- **h in he**: **h** (silent in standard Spanish)
+- **i in it**: **i**
+- **ea in eat**: **i** (in certain contexts it can be just "e")
+- **g in gee**: **g**
+- **k in key**: **k**
+- **l in lee**: **l**
+- **m in me**: **m**
+- **kn in knee**: **n** (silent 'k' in most Spanish contexts)
+- **ng in ping**: **ng** (though "n" or "g" are more common, Spanish doesn't have the same nasal sound)
+- **oa in oat**: **o** 
+- **oy in toy**: **oy**
+- **p in pee**: **p**
+- **r in read**: **r**
+- **s in sea**: **s**
+- **sh in she**: **ch** (there's no direct equivalent; "ch" can be a close approximation, but it’s not the same sound)
+- **t in tea**: **t**
+- **th in theta**: **z** (or **s** depending on region, not commonly used in standard Spanish)
+- **oo in hood**: **u**
+- **wo in two**: **u** (there's no direct equivalent; the sound is usually represented by "u")
+- **v in vee**: **b** (in many dialects, they are pronounced similarly)
+- **w in we**: **gu** (Spanish has few instances of "w"; "gu" is one way to approximate it)
+- **y in yield**: **y** (or **i** in many cases)
+- **z in zee**: **z** (in some dialects sounds like "s")
+- **z in seizure**: **s** (or **z** in certain dialects)
+

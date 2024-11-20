@@ -1,0 +1,43 @@
+In Irish, the sounds represented by the letters can be somewhat different from their representations in English. However, here's a general approximation of how these sounds can be represented using Irish orthography. Note that some sounds may not have an exact counterpart in Irish:
+
+- o in odd: **o**
+- a in at: **a**
+- u in hut: **u**
+- ou in ought: **ou** or **u**
+- ow in cow: **ao**
+- i in hide: **ai** or **i**
+- e in Ed: **e**
+- ur in hurt: **ur**
+- a in ate: **é**
+- i in it: **i**
+- ea in eat: **éa**
+- oa in oat: **ó**
+- oy in toy: **ó**
+- oo in hood: **u** or **oo** (in some contexts)
+- wo in two: **ó**
+
+- b in be: **b**
+- ch in cheese: **tch** or **ch**
+- d in dee: **d**
+- th in thee: **th**
+- f in fee: **f**
+- g in green: **g**
+- h in he: **h**
+- g in gee: **g**
+- k in key: **c** (There is no exact 'k' sound in Irish; 'c' is sometimes used)
+- l in lee: **l**
+- m in me: **m**
+- kn in knee: **n**
+- ng in ping: **ng**
+- p in pee: **p**
+- r in read: **r**
+- s in sea: **s**
+- sh in she: **sh**
+- t in tea: **t**
+- th in theta: **th**
+- v in vee: **v**
+- w in we: **v** or **u** (depending on dialect)
+- y in yield: **í**
+- z in zee: **s** (as there is generally no 'z' sound in Irish)
+- z in seizure: **s**
+

@@ -139,9 +139,9 @@ class GPT(OpenAI):
 		else:
 			for choice in completion.choices:
 				if choice.message:
-					answer = choice.message.content.rstrip().lstrip()
+					answer = choice.message.content.strip()
 				elif choice.text:
-					answer = choice.text.rstrip().lstrip()
+					answer = choice.text.strip()
 		if not answer:
 			if self.log_level >= 6:
 				print(completion)

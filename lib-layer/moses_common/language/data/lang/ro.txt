@@ -1,0 +1,43 @@
+Here’s a mapping of the sounds you provided to the closest Romanian letters or combinations of letters that represent those sounds:
+
+1. **o in odd** - **o**
+2. **a in at** - **a**
+3. **u in hut** - **u**
+4. **ou in ought** - **ou** or **o**
+5. **ow in cow** - **au**
+6. **i in hide** - **i**
+11. **e in Ed** - **e**
+12. **ur in hurt** - **î** or **â**
+13. **a in ate** - **e**
+17. **i in it** - **i**
+18. **ea in eat** - **ea**
+25. **oa in oat** - **oa**
+26. **oy in toy** - **oi**
+33. **oo in hood** - **u**
+34. **wo in two** - **u** (note this isn't a common combination in Romanian)
+
+7. **b in be** - **b**
+8. **ch in cheese** - **cî** (or just **c** before 'e' or 'i')
+9. **d in dee** - **d**
+10. **th in thee** - **d**
+14. **f in fee** - **f**
+15. **g in green** - **g**
+16. **h in he** - **h**
+19. **g in gee** - **j**
+20. **k in key** - **k**
+21. **l in lee** - **l**
+22. **m in me** - **m**
+23. **kn in knee** - **n**
+24. **ng in ping** - **n** (as in "mâncare" for food; or use **ng** in borrowed words)
+27. **p in pee** - **p**
+28. **r in read** - **r**
+29. **s in sea** - **s**
+30. **sh in she** - **ș**
+31. **t in tea** - **t**
+32. **th in theta** - **t** (or **ț** depending on the dialect)
+35. **v in vee** - **v**
+36. **w in we** - **v** (w is not native to Romanian)
+37. **y in yield** - **i**
+38. **z in zee** - **z**
+39. **z in seizure** - **z** 
+
