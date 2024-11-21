@@ -1,5 +1,7 @@
 # print("Loaded language init")
 
+import re
+
 languages = [
 	{ "code": "af", "title": "Afrikaans", "speechgen": "Afrikaans (RSA)" },
 	{ "code": "sq", "title": "Albanian", "speechgen": "Albanian" },
@@ -156,6 +158,9 @@ def get_language(code):
 	global languages
 	for language in languages:
 		if code == language['code']:
+			return language
+	for language in languages:
+		if language['code'].startswith(code):
 			return language
 	return None
 

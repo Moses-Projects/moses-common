@@ -211,8 +211,9 @@ class Interface:
 					label = param['label']
 				
 				if 'default' in param and not self._opts[param['long']]:
-					self._opts[param['short']] = param['default']
 					self._opts[param['long']] = param['default']
+					if 'short' in param:
+						self._opts[param['short']] = param['default']
 				if param.get('type') == 'input' and type(param.get('values')) is list:
 					if self._opts[param['long']] not in param['values']:
 						self.error("Option '{}' must be one of '{}'".format(label, "', '".join(param['values'])))

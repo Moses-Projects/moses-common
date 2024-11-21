@@ -25,7 +25,7 @@ class SpeechGen:
 		dry_run = False
 	)
 	"""
-	def __init__(self, speechgen_email=None, speechgen_api_token=None, save_directory=None, model=None, ui=None, log_level=5, dry_run=False):
+	def __init__(self, speechgen_email=None, speechgen_api_token=None, save_directory=None, ui=None, log_level=5, dry_run=False):
 		self.log_level = log_level
 		self.dry_run = dry_run
 		self.ui = ui or moses_common.ui.Interface()
@@ -101,7 +101,7 @@ class SpeechGen:
 		for voice in sg_language:
 			if not gender or gender == voice['sex']:
 				voice_list.append(voice['voice'])
-		return voice_list
+		return voice_list, language['title']
 
 
 class TTS(SpeechGen):
