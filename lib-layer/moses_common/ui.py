@@ -19,13 +19,15 @@ class Interface:
 	"""
 	ui = moses_common.ui.Interface()
 	"""
-	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None):
+	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None, bbedit_usage_message=None):
 		
 		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
 		
 		self.force_whitespace = common.convert_to_bool(force_whitespace) or False
 		
 		self._usage_message = usage_message
+		if common.is_bbedit():
+			self._usage_message = bbedit_usage_message
 		
 		self._colors = self._get_term_color_numbers()
 		
@@ -86,8 +88,12 @@ class Interface:
 		short_opts = ""
 		long_opts = []
 		if self._usage_message:
-			short_opts = "h"
-			long_opts.append("help")
+			if 'options' not in params:
+				params['options'] = []
+			params['options'].append({
+				"short": "h",
+				"long": "help"
+			})
 		if 'options' in params:
 			for opt in params['options']:
 				sa = ''
@@ -108,14 +114,76 @@ class Interface:
 					else:
 						self._opts[opt['long']] = None
 		
+		opts = []
+		args = []
 		# Parse options and arguments
-		try:
-			opts, args = getopt.gnu_getopt(sys.argv[1:], short_opts, long_opts)
-		except getopt.GetoptError as err:
-			error = str(err)
-			self.error(error.capitalize())  # will print something like "option -a not recognized"
-			self.usage()
-			sys.exit(2)
+		#   For BBEdit
+		if common.is_bbedit():
+			original_string = sys.stdin.read()
+			print(original_string)
+			input_string = original_string
+			opt_found = False
+			if 'options' in params and input_string:
+				lines = input_string.split('\n', 1)
+				if len(lines) > 1:
+					input_string = lines[1]
+				else:
+					input_string = None
+				options = lines[0].split()
+				for name in options:
+					value = ''
+					if re.search(r'=', name):
+						name, value = name.split('=', 1)
+					for opt in params['options']:
+						if name == opt.get('long'):
+							opts.append((f"--{opt['long']}", value))
+							opt_found = True
+							break
+						elif name == opt.get('short'):
+							opts.append((f"--{opt['short']}", value))
+							opt_found = True
+							break
+					for opt in params['options']:
+						if 'values' in opt and name in opt['values']:
+							if 'long' in opt:
+								opts.append((f"--{opt['long']}", name))
+								opt_found = True
+								break
+							elif 'short' in opt:
+								opts.append((f"--{opt['short']}", name))
+								opt_found = True
+								break
+							
+				# If no options found on first line, use it for args
+				if not opt_found:
+					input_string = original_string
+			if 'args' in params and input_string:
+				cnt = 0
+				for arg in params['args']:
+					if not input_string:
+						break
+					cnt += 1
+					if cnt == len(params['args']):
+						args.append(input_string.strip())
+					else:
+						input_parts = input_string.split('\n', 1)
+						if input_parts:
+							args.append(input_parts[0])
+							if len(input_parts) > 1:
+								input_string = input_parts[1]
+							else:
+								input_string = None
+						
+		# Parse options and arguments
+		#   For CLI
+		else:
+			try:
+				opts, args = getopt.gnu_getopt(sys.argv[1:], short_opts, long_opts)
+			except getopt.GetoptError as err:
+				error = str(err)
+				self.error(error.capitalize())  # will print something like "option -a not recognized"
+				self.usage()
+				sys.exit(2)
 		
 		# Handle options
 		for o, a in opts:
@@ -524,7 +592,10 @@ class Interface:
 		for record in records:
 			output += hr + "\n"
 			for field in fields:
-				output += f"{field:>{max_field_length}} : {record[field]:<{max_value_length}}\n"
+				value = record[field]
+				if type(record[field]) is list or type(record[field]) is dict:
+					value = common.make_json(record[field])
+				output += f"{field:>{max_field_length}} : {value:<{max_value_length}}\n"
 		output += hr
 		return output
 	
