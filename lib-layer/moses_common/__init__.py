@@ -500,7 +500,7 @@ common.save_config(data, filename)
 def save_config(data, filename=None):
 	if not filename:
 		os.makedirs(get_storage_dir(), exist_ok=True)
-		filename = get_storage_dir() + f"/settings.cfg"
+		filename = get_storage_dir() + f"/settings.yml"
 	filename = os.path.expanduser(filename)
 	
 	# Read previous settings

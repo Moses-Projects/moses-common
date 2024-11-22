@@ -95,7 +95,11 @@ class Interface:
 				"long": "help"
 			})
 		if 'options' in params:
+			config = common.read_config()
 			for opt in params['options']:
+				opt['name'] = opt.get('long') or opt.get('short')
+				if opt.get('long') and opt['long'] in config:
+					opt['default'] = config[opt['long']]
 				sa = ''
 				la = ''
 				if 'type' in opt and opt['type'] in ['input', 'file']:
@@ -122,6 +126,12 @@ class Interface:
 			original_string = sys.stdin.read()
 			print(original_string)
 			input_string = original_string
+			
+			# Process config
+			if re.match(r'config$', input_string.lower(), re.M):
+				# Print and save config
+				self.process_config(params, input_string.split("\n"))
+				sys.exit()
 			opt_found = False
 			if 'options' in params and input_string:
 				lines = input_string.split('\n', 1)
@@ -206,11 +216,11 @@ class Interface:
 		
 		if 'options' in params:
 			for param in params['options']:
-				label = param.get('long')
+				label = param['name']
 				if 'label' in param:
 					label = param['label']
 				
-				if 'default' in param and not self._opts[param['long']]:
+				if param.get('long') and 'default' in param and not self._opts[param['long']]:
 					self._opts[param['long']] = param['default']
 					if 'short' in param:
 						self._opts[param['short']] = param['default']
@@ -255,8 +265,40 @@ class Interface:
 					self._args[param['name']] = None
 			self._args['args'] = args
 		
+		# Print config for CLI
+		if params.get('args') and len(params['args']) >= 1:
+			first_arg = self._args[params['args'][0].get('name')]
+			if first_arg == 'config':
+				print(common.get_storage_dir() + f"/settings.cfg")
+				self.process_config(params)
+				sys.exit()
 		return self._args, self._opts
-
+	
+	def process_config(self, params, lines=None):
+		if 'options' not in params:
+			self.warning("This script contains no options to store in a config.")
+		config = {}
+		for opt in params['options']:
+			if 'long' in opt and 'default' in opt:
+				config[opt['long']] = opt['default']
+		if lines:
+			was_changed = False
+			for line in lines:
+				parts = re.split(r':\s*', line, 1)
+				if parts:
+					key = parts[0]
+					value = None
+					if len(parts) >= 2:
+						value = parts[1]
+					if key in config:
+						config[key] = value
+						was_changed = True
+			if was_changed:
+				common.save_config(config)
+		for key, value in config.items():
+			print(f"{key}: {value}")
+			
+	
 	"""
 	inputs = ui.resolve_inputs(field_list, file)
 	"""
