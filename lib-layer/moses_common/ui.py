@@ -52,25 +52,37 @@ class Interface:
 	### Arg handing
 	"""
 	arguments, options = self.get_options({
+		"description": "Main description line of usage.",
 		"args": [ {
 			"name": "function",
 			"label": "Lambda function",
-			"required": True
+			"required": True,
+			"help": "Override generated arg help."
 		}, {
 			"name": "environment",
 			"label": "Environment",
 			"values": ["dev", "prod"],
-			"required": True
+			"required": True,
+			"help": "Override generated arg help."
 		}, {
 			"name": "file",
 			"label": "JSON file",
 			"type": "file",
-			"required": True
+			"required": True,
+			"help": "Override generated arg help."
 		}, {
 			"name": "files",
 			"label": "Image files",
 			"type": "glob",
-			"required": True
+			"required": True,
+			"help": "Override generated arg help."
+		} ],
+		"command_help": [ {
+			"name": "title",
+			"value": "Header"
+		}, {
+			"name": "left column",
+			"value": "right column"
 		} ],
 		"options": [ {
 			"short": "v",
@@ -694,10 +706,14 @@ class Interface:
 					else:
 						label += f"  "
 				if 'long' in opt:
-					if common.is_bbedit():
-						label += f", {opt['long']}"
+					if 'short' in opt:
+						label += ","
 					else:
-						label += f", --{opt['long']}"
+						label += " "
+					if common.is_bbedit():
+						label += f" {opt['long']}"
+					else:
+						label += f" --{opt['long']}"
 				if 'type' in opt and opt['type'] in ['input']:
 					if common.is_bbedit():
 						label += '=<>'
