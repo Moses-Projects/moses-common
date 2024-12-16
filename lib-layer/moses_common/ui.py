@@ -19,15 +19,14 @@ class Interface:
 	"""
 	ui = moses_common.ui.Interface()
 	"""
-	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None, bbedit_usage_message=None):
+	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None):
 		
 		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
 		
 		self.force_whitespace = common.convert_to_bool(force_whitespace) or False
 		
-		self._usage_message = usage_message
-		if common.is_bbedit():
-			self._usage_message = bbedit_usage_message
+		self.usage_message = usage_message
+		self.params = None
 		
 		self._colors = self._get_term_color_numbers()
 		
@@ -84,16 +83,18 @@ class Interface:
 	})
 	"""
 	def get_options(self, params={}):
+		self.params = params
 		# Prep options
 		short_opts = ""
 		long_opts = []
-		if self._usage_message:
-			if 'options' not in params:
-				params['options'] = []
-			params['options'].append({
-				"short": "h",
-				"long": "help"
-			})
+		
+		if 'options' not in params:
+			params['options'] = []
+		params['options'].append({
+			"short": "h",
+			"long": "help"
+		})
+		
 		if 'options' in params:
 			config = common.read_config()
 			for opt in params['options']:
@@ -125,7 +126,7 @@ class Interface:
 		if common.is_bbedit():
 			original_string = sys.stdin.read()
 			print(original_string)
-			input_string = original_string
+			input_string = original_string.strip()
 			
 			# Process config
 			if re.match(r'config$', input_string.lower(), re.M):
@@ -150,7 +151,7 @@ class Interface:
 							opt_found = True
 							break
 						elif name == opt.get('short'):
-							opts.append((f"--{opt['short']}", value))
+							opts.append((f"-{opt['short']}", value))
 							opt_found = True
 							break
 					for opt in params['options']:
@@ -160,7 +161,7 @@ class Interface:
 								opt_found = True
 								break
 							elif 'short' in opt:
-								opts.append((f"--{opt['short']}", name))
+								opts.append((f"-{opt['short']}", name))
 								opt_found = True
 								break
 							
@@ -208,7 +209,10 @@ class Interface:
 						if opt.get('type') == 'file':
 							if not os.path.isfile(a):
 								self.error("File '{}' not found".format(a))
-								sys.exit(2)
+								if common.is_bbedit():
+									sys.exit()
+								else:
+									sys.exit(2)
 						if 'short' in opt:
 							self._opts[opt['short']] = a
 						if 'long' in opt:
@@ -227,36 +231,49 @@ class Interface:
 				if param.get('type') == 'input' and type(param.get('values')) is list:
 					if self._opts[param['long']] not in param['values']:
 						self.error("Option '{}' must be one of '{}'".format(label, "', '".join(param['values'])))
-						self.usage()
-						sys.exit(2)
-				
+						if common.is_bbedit():
+							sys.exit()
+						else:
+							self.usage()
+							sys.exit(2)
+		
 		# Handle arguments
 		if 'args' in params:
 			for param in params['args']:
-				label = param['name']
-				if 'label' in param:
-					label = param['label']
+				label = param.get('label') or param['name']
 				
 				if 'required' in param and param['required'] and not len(args):
 					self.error(f"Argument '{label}' is required")
-					self.usage()
-					sys.exit(2)
+					if common.is_bbedit():
+						sys.exit()
+					else:
+						self.usage()
+						sys.exit(2)
 				
 				if len(args):
 					value = args.pop(0)
 					if 'values' in param and type(param['values']) is list:
 						if value not in param['values']:
 							self.error("Argument '{}' must be one of '{}'".format(label, "', '".join(param['values'])))
-							self.usage()
-							sys.exit(2)
+							if common.is_bbedit():
+								sys.exit()
+							else:
+								self.usage()
+								sys.exit(2)
 					if 'type' in param and param['type'] == 'file':
 						if not os.path.isfile(value):
 							self.error("File '{}' not found".format(value))
-							sys.exit(2)
+							if common.is_bbedit():
+								sys.exit()
+							else:
+								sys.exit(2)
 					elif 'type' in param and param['type'] == 'glob':
 						if not os.path.isfile(value):
 							self.error("File '{}' not found".format(value))
-							sys.exit(2)
+							if common.is_bbedit():
+								sys.exit()
+							else:
+								sys.exit(2)
 						value = [value]
 						for i in range(len(args)):
 							value.append(args.pop(0))
@@ -265,12 +282,12 @@ class Interface:
 					self._args[param['name']] = None
 			self._args['args'] = args
 		
-		# Print config for CLI
+		# Print and save config for CLI
 		if params.get('args') and len(params['args']) >= 1:
 			first_arg = self._args[params['args'][0].get('name')]
 			if first_arg == 'config':
 				print(common.get_storage_dir() + f"/settings.cfg")
-				self.process_config(params)
+				self.process_config(params, self._args.get('args'))
 				sys.exit()
 		return self._args, self._opts
 	
@@ -281,7 +298,15 @@ class Interface:
 		for opt in params['options']:
 			if 'long' in opt and 'default' in opt:
 				config[opt['long']] = opt['default']
-		if lines:
+		# Strip initial 'config' most likely needed for BBEdit
+		if lines and lines[0] == 'config':
+			lines.pop(0)
+		# Print config
+		if not lines:
+			for key, value in config.items():
+				print(f"{key}: {value}")
+		# Save config
+		else:
 			was_changed = False
 			for line in lines:
 				parts = re.split(r':\s*', line, 1)
@@ -293,10 +318,12 @@ class Interface:
 					if key in config:
 						config[key] = value
 						was_changed = True
+			if not common.is_bbedit():
+				for key, value in config.items():
+					print(f"{key}: {value}")
 			if was_changed:
-				common.save_config(config)
-		for key, value in config.items():
-			print(f"{key}: {value}")
+				filename = common.save_config(config)
+				self.info(f"Config saved to {filename}")
 			
 	
 	"""
@@ -593,9 +620,133 @@ class Interface:
 			print(self.format_text(f"ERROR: {text}", ['maroon', 'bold'], quote='maroon_bg'))
 	
 	def usage(self):
-		if not self._usage_message:
+		if self.usage_message:
+			self.info(self.usage_message)
 			return
-		self.info(self._usage_message)
+		if 'description' in self.params:
+			self.info(self.params['description'] + "\n")
+		script_name = os.path.basename(sys.modules['__main__'].__file__)
+		
+		# Description
+		self.info("Usage:")
+		if common.is_bbedit():
+			if 'options' in self.params:
+				self.info(f"  [<option> [<option> ...]]")
+			if 'args' in self.params:
+				arg_list = []
+				for arg in self.params['args']:
+					arg_list.append(arg['name'])
+				script_line = "<" + ">\n  <".join(arg_list) + ">"
+				self.info(f"  {script_line}\n")
+			
+		else:
+			script_line = script_name
+			if 'args' in self.params:
+				arg_list = []
+				for arg in self.params['args']:
+					arg_list.append(arg['name'])
+				script_line += " <" + "> <".join(arg_list) + ">"
+			self.info(f"  {script_line}\n")
+		
+		# Commands
+		if 'command_help' in self.params:
+			max_length = 0
+			for line in self.params['command_help']:
+				if len(line['name']) > max_length:
+					max_length = len(line['name'])
+			for line in self.params['command_help']:
+				if line['name'] == 'title':
+					self.info(f"  {line['value']}:")
+				else:
+					self.info(f"    {line['name']:<{max_length}}  {line['value']}")
+			self.info(" ")
+		
+		# Args
+		if 'args' in self.params:
+			max_length = 0
+			for line in self.params['args']:
+				if line.get('help') and len(line['name']) > max_length:
+					max_length = len(line['name'])
+			if max_length > 0:
+				self.info("  Args (* required):")
+				for line in self.params['args']:
+					required = ' '
+					if 'required' in line and line['required']:
+						required = '*'
+					if line.get('help'):
+						self.info(f"  {required} <{line['name']:<{max_length}}>  {line['help']}")
+				self.info(" ")
+		
+		# Options
+		if 'options' in self.params:
+			max_length = 0
+			output = []
+			for opt in self.params['options']:
+				label = ''
+				if 'short' in opt:
+					if common.is_bbedit():
+						label += f"{opt['short']}"
+					else:
+						label += f"-{opt['short']}"
+				else:
+					if common.is_bbedit():
+						label += f" "
+					else:
+						label += f"  "
+				if 'long' in opt:
+					if common.is_bbedit():
+						label += f", {opt['long']}"
+					else:
+						label += f", --{opt['long']}"
+				if 'type' in opt and opt['type'] in ['input']:
+					if common.is_bbedit():
+						label += '=<>'
+					else:
+						label += ' <>'
+				
+				if len(label) > max_length:
+					max_length = len(label)
+				
+				value = opt.get('help')
+				if value:
+					if opt.get('default'):
+						value += f" Defaults to \"{opt['default']}\"."
+				else:
+					if opt.get('long') == 'dry_run':
+						value = "Show likely output, but don't actually make changes."
+					elif opt.get('long') == 'help':
+						value = "This help text."
+					elif opt.get('long') == 'verbose':
+						value = "Print extra output."
+					elif opt.get('long') == 'extra_verbose':
+						value = "Print all output."
+					elif opt.get('values'):
+						value = "One of " + common.conjunction(opt['values'], conj='or', quote='"') + "."
+						if opt.get('default'):
+							value += f" Defaults to \"{opt['default']}\"."
+					elif opt.get('default'):
+						value = f"Defaults to \"{opt['default']}\"."
+				
+				if label and value:
+					output.append({
+						"name": label,
+						"value": value
+					})
+			if output:
+				self.info("  Options:")
+				for line in output:
+					self.info(f"    {line['name']:<{max_length}}  {line['value']}")
+				self.info(" ")
+				self.info("  Config:")
+				if common.is_bbedit():
+					self.info(f"    View: 'config'")
+					self.info(f"    Save: View config, change values, highlight 'config' with changes, re-run filter.")
+				else:
+					self.info(f"    View: `{script_name} config`")
+					self.info(f"    Save:")
+					self.info(f"      `{script_name} config <option name>:<option value> [<option name>:<option value>]`")
+			self.info(" ")
+		
 	
 	def pretty(self, input, label=None, colorize=True):
 		if label:
@@ -614,6 +765,8 @@ class Interface:
 	
 	def format_hash_list(self, records, fields=None):
 		records = common.to_list(records)
+		if not records:
+			return ''
 		if not fields:
 			fields = list(records[0].keys())
 		
@@ -638,7 +791,7 @@ class Interface:
 				value = record[field]
 				if type(record[field]) is list or type(record[field]) is dict:
 					value = common.make_json(record[field])
-				output += f"{field:>{max_field_length}} : {value:<{max_value_length}}\n"
+				output += f"{field:>{max_field_length}} : {value}\n"
 		output += hr
 		return output
 	

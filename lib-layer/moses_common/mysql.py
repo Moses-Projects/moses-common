@@ -177,6 +177,8 @@ class DBH:
 		new_column_map = {}
 		new_column_list = []
 		for field, definition in column_map.items():
+			definition['json_data_type'] = self.get_json_data_type(definition)
+			definition['python_data_type'] = self.get_python_data_type(definition)
 			new_column_map[field] = {}
 			for key, value in definition.items():
 				new_column_map[field][key.lower()] = value
@@ -185,6 +187,84 @@ class DBH:
 		if record_type == 'list':
 			return new_column_list
 		return self.table_data[schema][table_name]
+	
+	def get_json_data_type(self, column_info):
+		data_type = column_info.get('data_type') or column_info.get('DATA_TYPE')
+		column_type = column_info.get('column_type') or column_info.get('COLUMN_TYPE')
+		type_map = {
+			"tinyint": "number",
+			"smallint": "number",
+			"mediumint": "number",
+			"int": "number",
+			"bigint": "number",
+			"decimal": "number",
+			"float": "number",
+			"real": "number",
+			"double": "number",
+			"char": "string",
+			"varchar": "string",
+			"tinytext": "string",
+			"text": "string",
+			"mediumtext": "string",
+			"longtext": "string",
+			"bit": "string",
+			"binary": "string",
+			"varbinary": "string",
+			"tinyblob": "string",
+			"blob": "string",
+			"mediumblob": "string",
+			"longblob": "string",
+			"datetime": "timestamp",
+			"timestamp": "timestamp",
+			"date": "date",
+			"year": "date",
+			"time": "time",
+			"enum": "string",
+			"set": "string",
+			"json": "object"
+		}
+		if column_type == 'tinyint(1)':
+			return 'boolean'
+		return type_map.get(data_type)
+	
+	def get_python_data_type(self, column_info):
+		data_type = column_info.get('data_type') or column_info.get('DATA_TYPE')
+		column_type = column_info.get('column_type') or column_info.get('COLUMN_TYPE')
+		type_map = {
+			"tinyint": "int",
+			"smallint": "int",
+			"mediumint": "int",
+			"int": "int",
+			"bigint": "int",
+			"decimal": "float",
+			"float": "float",
+			"real": "float",
+			"double": "float",
+			"char": "str",
+			"varchar": "str",
+			"tinytext": "str",
+			"text": "str",
+			"mediumtext": "str",
+			"longtext": "str",
+			"bit": "bytes",
+			"binary": "bytes",
+			"varbinary": "bytes",
+			"tinyblob": "bytes",
+			"blob": "bytes",
+			"mediumblob": "bytes",
+			"longblob": "bytes",
+			"datetime": "datetime",
+			"timestamp": "datetime",
+			"date": "date",
+			"year": "date",
+			"time": "time",
+			"enum": "str",
+			"set": "str",
+			"json": "object"
+		}
+		if column_type == 'tinyint(1)':
+			return 'bool'
+		return type_map.get(data_type)
 	
 	
 	# Get records
@@ -478,3 +558,41 @@ class DBH:
 		return False
 	
 	
+"""
+CREATE TABLE test_data_type (
+	id smallint,
+	col_tinyint tinyint,
+	col_smallint smallint,
+	col_mediumint mediumint,
+	col_int int,
+	col_bigint bigint,
+	col_decimal decimal(8,2),
+	col_numeric numeric(8,2),
+	col_float float,
+	col_real real,
+	col_double_precision double precision,
+	col_double double,
+	col_char char(8),
+	col_varchar8 varchar(8),
+	col_tinytext tinytext,
+	col_text text,
+	col_mediumtext mediumtext,
+	col_longtext longtext,
+	col_bit bit(2),
+	col_binary binary(4),
+	col_varbinary varbinary(8),
+	col_tinyblob tinyblob,
+	col_blob blob,
+	col_mediumblob mediumblob,
+	col_longblob longblob,
+	col_datetime datetime,
+	col_timestamp timestamp,
+	col_date date,
+	col_year year,
+	col_time time,
+	col_boolean tinyint(1),
+	col_enum ENUM('first', 'second', 'third'),
+	col_set SET('first', 'second', 'third'),
+	col_json json
+);
+"""

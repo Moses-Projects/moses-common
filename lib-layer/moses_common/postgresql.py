@@ -400,7 +400,7 @@ class DBH:
 	where_conditional = dbh.make_where_conditional(key, value_list)
 	where_conditional = dbh.make_where_conditional(key, value_list, 'ilike')
 	"""
-	def make_where_conditional(self, key, value_list, operator=None, should_quote_identifier=False):
+	def make_where_conditional(self, key, value_list, operator=None, should_quote_identifier=False, split_words=True, value_type=None, conjunction='and'):
 	# 	print("{} = {}".format(key, value_list))
 		qkey = key
 		if should_quote_identifier:
@@ -411,6 +411,19 @@ class DBH:
 		
 		if type(value_list) is not list:
 			value_list = [value_list]
+		value_list = common.unique_list(value_list)
+		if value_type:
+			new_value_list = []
+			for value in value_list:
+				if value_type == 'str':
+					new_value_list.append(common.convert_to_str(value))
+				elif value_type == 'float':
+					new_value_list.append(common.convert_to_float(value))
+				elif value_type == 'int':
+					new_value_list.append(common.convert_to_int(value))
+				elif value_type == 'bool':
+					new_value_list.append(common.convert_to_bool(value))
+			value_list = new_value_list
 		
 		if not len(value_list):
 			operator = 'is'
@@ -428,11 +441,13 @@ class DBH:
 			for value in value_list:
 				subvalues = []
 				nvalue = common.normalize(value)
-				value_words = nvalue.split(' ')
+				value_words = [value]
+				if split_words:
+					value_words = nvalue.split(' ')
 				for word in value_words:
 					subvalues.append('{} {} {}'.format(qkey, operator.upper(), self.quote_like(word)))
 				values.append(self.join_where_conditionals(subvalues, 'and'))
-			return self.join_where_conditionals(values, 'or')
+			return self.join_where_conditionals(values, conjunction)
 		
 		if len(value_list) > 1:
 			return '{} IN ({})'.format(qkey, ', '.join(self.quote(value_list)))
@@ -467,7 +482,7 @@ class DBH:
 		}
 	}, conjunction='and')
 	"""
-	def make_where_clause(self, args, conjunction='and', should_quote_identifier=False):
+	def make_where_clause(self, args, conjunction='and', should_quote_identifier=False, split_words=True):
 		where_sql_list = []
 		if type(args) is list:
 			for arg in args:
@@ -483,9 +498,12 @@ class DBH:
 						should_quote_identifier = True
 					if 'operator' in value:
 						operator = value['operator']
-					where_sql_list.append(self.make_where_conditional(key, value['value'], operator, should_quote_identifier))
+					conjunction = 'and'
+					if value.get('conjunction') == 'or':
+						conjunction = 'or'
+					where_sql_list.append(self.make_where_conditional(key, value['value'], operator, should_quote_identifier=should_quote_identifier, split_words=split_words, value_type=value.get('type'), conjunction=conjunction))
 				else:
-					where_sql_list.append(self.make_where_conditional(key, value, should_quote_identifier=should_quote_identifier))
+					where_sql_list.append(self.make_where_conditional(key, value, should_quote_identifier=should_quote_identifier, split_words=split_words))
 		return self.join_where_conditionals(where_sql_list, conjunction)
 		
 	"""
@@ -648,6 +666,9 @@ class DBH:
 		if schema not in self.table_data:
 			self.table_data[schema] = {}
 		column_map = self.select_as_hash_of_hashes(sql, 'column_name')
+		for field, definition in column_map.items():
+			definition['json_data_type'] = self.get_json_data_type(definition)
+			definition['python_data_type'] = self.get_python_data_type(definition)
 		self.table_data[schema][table_name] = column_map
 		
 		if record_type == 'list':
@@ -656,6 +677,96 @@ class DBH:
 				new_column_list.append(definition)
 			return new_column_list
 		return column_map
+	
+	def get_json_data_type(self, column_info):
+		data_type = column_info.get('data_type')
+		type_map = {
+			"smallint": "number",
+			"integer": "number",
+			"bigint": "number",
+			"numeric": "number",
+			"real": "number",
+			"double precision": "number",
+			"money": "number",
+			"character": "string",
+			"character varying": "string",
+			"text": "string",
+			"bit": "string",
+			"bit varying": "string",
+			"bytea": "string",
+			"timestamp without time zone": "timestamp",
+			"timestamp with time zone": "timestamp",
+			"date": "date",
+			"time without time zone": "time",
+			"time with time zone": "time",
+			"interval": "interval",
+			"boolean": "boolean",
+			"USER-DEFINED": "string",
+			"ARRAY": "object",
+			"uuid": "string",
+			"jsonb": "object",
+			"json": "object",
+			"cidr": "string",
+			"inet": "string",
+			"macaddr": "string",
+			"macaddr8": "string",
+			"box": "string",
+			"circle": "string",
+			"line": "string",
+			"lseg": "string",
+			"path": "string",
+			"point": "string",
+			"polygon": "string",
+			"tsquery": "string",
+			"tsvector": "string",
+			"xml": "object"
+		}
+		return type_map.get(data_type)
+	
+	def get_python_data_type(self, column_info):
+		data_type = column_info.get('data_type')
+		type_map = {
+			"smallint": "int",
+			"integer": "int",
+			"bigint": "int",
+			"numeric": "float",
+			"real": "float",
+			"double precision": "float",
+			"money": "float",
+			"character": "str",
+			"character varying": "str",
+			"text": "str",
+			"bit": "bytes",
+			"bit varying": "bytes",
+			"bytea": "bytes",
+			"timestamp without time zone": "timestamp",
+			"timestamp with time zone": "timestamp",
+			"date": "date",
+			"time without time zone": "time",
+			"time with time zone": "time",
+			"interval": "interval",
+			"boolean": "bool",
+			"USER-DEFINED": "str",
+			"ARRAY": "object",
+			"uuid": "str",
+			"jsonb": "object",
+			"json": "object",
+			"cidr": "str",
+			"inet": "str",
+			"macaddr": "str",
+			"macaddr8": "str",
+			"box": "str",
+			"circle": "str",
+			"line": "str",
+			"lseg": "str",
+			"path": "str",
+			"point": "str",
+			"polygon": "str",
+			"tsquery": "str",
+			"tsvector": "str",
+			"xml": "object"
+		}
+		return type_map.get(data_type)
 	
 	
 	# Get records
@@ -1416,3 +1527,73 @@ WHERE n.nspname = {} AND c.relname = {}
 		cursor.close()
 		return True
 	
+"""
+CREATE TYPE ordinal_text AS ENUM('first', 'second', 'third');
+CREATE TABLE test_data_type (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	"col_smallint" smallint,
+	"col_int2" int2,
+	"col_integer" integer,
+	"col_int4" int4,
+	"col_bigint" bigint,
+	"col_int8" int8,
+	"col_decimal" decimal(8,2),
+	"col_numeric" numeric(8,2),
+	"col_real" real,
+	"col_float4" float4,
+	"col_float_real" float(16),
+	"col_double_precision" double precision,
+	"col_float8" float8,
+	"col_float_double" float(32),
+	"col_smallserial" smallserial,
+	"col_serial2" serial2,
+	"col_serial" serial,
+	"col_serial4" serial4,
+	"col_bigserial" bigserial,
+	"col_serial8" serial8,
+	"col_money" money,
+	"col_char" char(8),
+	"col_character" character(16),
+	"col_bpchar" bpchar(8),
+	"col_varchar" varchar,
+	"col_character_varying" character varying(8),
+	"col_bpchar_vary" bpchar,
+	"col_text" text,
+	"col_bit" bit(2),
+	"col_varbit" varbit(2),
+	"col_bit_varying" bit varying(4),
+	"col_bytea" bytea,
+	"col_timestamp" timestamp without time zone,
+	"col_timestamp_w_tz" timestamp with time zone,
+	"col_timestamptz" timestamptz,
+	"col_date" date,
+	"col_time" time without time zone,
+	"col_time_w_tz" time with time zone,
+	"col_timetz" timetz,
+	"col_interval" interval second (2),
+	"col_boolean" boolean,
+	"col_bool" boolean,
+	"col_enum" ordinal_text,
+	"col_jsonb" jsonb,
+	"col_json" json,
+	"col_array_int" int[],
+	"col_array_varchar" varchar(8)[],
+	"col_array_decimal" decimal(8,2)[],
+	"col_array_multi" int[][],
+	"col_array_multi_fixed" int[3][4],
+	"col_cidr" cidr,
+	"col_inet" inet,
+	"col_macaddr" macaddr,
+	"col_macaddr8" macaddr8,
+	"col_box" box,
+	"col_circle" circle,
+	"col_line" line,
+	"col_lseg" lseg,
+	"col_path" path,
+	"col_point" point,
+	"col_polygon" polygon,
+	"col_tsquery" tsquery,
+	"col_tsvector" tsvector,
+	"col_xml" xml
+);
+"""

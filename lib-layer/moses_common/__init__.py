@@ -416,7 +416,7 @@ def read_file(filepath, delimiter=None, mapping=None, file_checked=False, conver
 		filepath = os.path.expanduser(filepath)
 		if not os.path.isfile(filepath):
 			return None
-	if re.search(r'\.csv$', filepath, re.IGNORECASE) and not convert:
+	if re.search(r'\.csv$', filepath, re.IGNORECASE) and convert:
 		return read_csv(filepath, delimiter=delimiter, mapping=mapping)
 	else:
 		file = open(filepath, 'r')
@@ -485,7 +485,7 @@ settings = common.read_config(filename)
 """
 def read_config(filename=None):
 	if not filename:
-		filename = get_storage_dir() + f"/settings.cfg"
+		filename = get_storage_dir() + f"/settings.yml"
 	filename = os.path.expanduser(filename)
 	
 	if not os.path.isfile(filename):
@@ -667,11 +667,17 @@ def _map_csv_record(record, mapping):
 """
 success = common.write_csv(filepath, array_of_dicts, fields=array_of_fields_to_include)
 """
-def write_csv(filepath, data, fields=None):
+def write_csv(filepath, data, fields=None, include_header=True, make_dir=False):
 	filepath = os.path.expanduser(filepath)
+	if not fields and type(data[0]) is dict:
+		fields = data[0].keys()
+	if make_dir:
+		base_dir = os.path.dirname(filepath)
+		os.makedirs(base_dir, exist_ok=True)
 	with open(filepath, 'w', newline='') as csvfile:
 		writer = csv.DictWriter(csvfile, fieldnames=fields, extrasaction='ignore')
-		writer.writeheader()
+		if include_header:
+			writer.writeheader()
 		for row in data:
 			writer.writerow(row)
 	return True
