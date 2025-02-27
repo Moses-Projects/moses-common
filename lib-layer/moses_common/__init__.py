@@ -51,21 +51,21 @@ response_code, response_data = common.get_url(url, {
 def get_url(url, args={}, convert=True, debug=False, dry_run=False, log_level=5):
 	if debug:
 		log_level = 7
-	
+
 	if type(args) is not dict:
 		raise AttributeError("get_url arg should be a dict.")
-	
+
 	headers = {}
 	if 'headers' in args and type(args['headers']) is dict:
 		headers = args['headers']
-	
+
 	if args.get('bearer_token'):
 		headers['Authorization'] = 'Bearer {}'.format(args['bearer_token'])
 	elif args.get('username') and args.get('password'):
 		credentials = ('%s:%s' % (args['username'], args['password']))
 		encoded_credentials = base64.b64encode(credentials.encode('ascii'))
 		headers['Authorization'] = 'Basic {}'.format(encoded_credentials.decode("ascii"))
-	
+
 	data = None
 	if 'data' in args:
 		if type(args['data']) is dict:
@@ -73,17 +73,17 @@ def get_url(url, args={}, convert=True, debug=False, dry_run=False, log_level=5)
 			data = data.encode('ascii')
 		elif type(args['data']) is str:
 			data = args['data'].encode('ascii')
-	
+
 	method = 'GET'
 	if args.get('method'):
 		method = args['method']
 	elif data:
 		method = 'POST'
-	
+
 	if 'query' in args and type(args['query']) is dict:
 		query = urllib.parse.urlencode(args['query'])
 		url += '?' + query
-	
+
 	if log_level >= 7 or dry_run:
 		print("method:", method)
 		print("url:", url)
@@ -92,12 +92,12 @@ def get_url(url, args={}, convert=True, debug=False, dry_run=False, log_level=5)
 			print("data {}: {}".format(type(data), data))
 	elif log_level >= 6:
 		print(f"{method} {url}")
-	
+
 	if dry_run:
 		return 200, "Dry run response"
-	
+
 	req = urllib.request.Request(url, data=data, headers=headers, method=method)
-	
+
 	try:
 		with urllib.request.urlopen(req) as response:
 			response = response.read()
@@ -109,7 +109,7 @@ def get_url(url, args={}, convert=True, debug=False, dry_run=False, log_level=5)
 	except:
 		print("Unexpected error:", sys.exc_info()[0])
 		raise
-	
+
 	if convert:
 		return 200, convert_value(response)
 	else:
@@ -187,13 +187,13 @@ def make_csv(python_object, fields=None):
 	new_csvfile = io.StringIO()
 	if not fields:
 		fields = python_object[0].keys()
-	
+
 	csv_writer = csv.DictWriter(new_csvfile, fieldnames=fields)
 	csv_writer.writeheader()
 	csv_writer.writerows(python_object)
 	output = new_csvfile.getvalue()
 	new_csvfile.close()
-	
+
 	return output
 
 
@@ -338,14 +338,14 @@ def convert_value(input_string):
 		input_string = decompress_gzip(input_string)
 	if type(input_string) is bytes:
 		input_string = str(from_bytes(input_string).best())
-	
+
 	if type(input_string) is not str:
 		return input_string
 # 	print("input_string {}: {}".format(type(input_string), input_string))
 	value_string = parse_base64(input_string)
 	if value_string is None:
 		value_string = input_string
-	
+
 	value_object = parse_json(value_string)
 	if value_object is not None:
 		return value_object
@@ -356,7 +356,7 @@ def convert_value(input_string):
 	if value_object is not None:
 		return value_object
 	return value_string
-	
+
 """
 object = common.yaml_load(yaml_string)
 """
@@ -408,7 +408,7 @@ def get_file_age(filepath, file_checked=False):
 			return None
 	epoch = get_epoch()
 	return (epoch - os.path.getmtime(filepath)) / 86400
-	
+
 """
 data = common.read_file(filename)
 For CSVs:
@@ -450,7 +450,7 @@ def write_file(filepath, data, format=None, make_dir=False):
 	if make_dir:
 		base_dir = os.path.dirname(filepath)
 		os.makedirs(base_dir, exist_ok=True)
-	
+
 	with open(filepath, "w") as file:
 		file.write(text)
 		return True
@@ -479,7 +479,7 @@ def read_cache(filepath, days):
 # 	print("age {}: {}".format(type(age), age))
 	if convert_to_float(days) < get_file_age(filepath, file_checked=True):
 		return None
-	
+
 	return read_file(filepath, file_checked=True)
 
 """
@@ -490,10 +490,10 @@ def read_config(filename=None):
 	if not filename:
 		filename = get_storage_dir() + f"/settings.yml"
 	filename = os.path.expanduser(filename)
-	
+
 	if not os.path.isfile(filename):
 		return {}
-	
+
 	return read_file(filename, file_checked=True)
 
 """
@@ -505,14 +505,14 @@ def save_config(data, filename=None):
 		os.makedirs(get_storage_dir(), exist_ok=True)
 		filename = get_storage_dir() + f"/settings.yml"
 	filename = os.path.expanduser(filename)
-	
+
 	# Read previous settings
 	settings = read_config(filename=filename)
-	
+
 	# Merge new settings
 	for key, value in data.items():
 		settings[key] = value
-	
+
 	# Save settings
 	write_file(filename, settings, format='yaml')
 	return filename
@@ -520,16 +520,19 @@ def save_config(data, filename=None):
 """
 records = common.read_csv(filepath)
 records = common.read_csv(filepath, delimiter='|')
+records = common.read_csv(filepath, delimiter='|', add_row_number_field="item_num", mapping=csv_mapping)
 """
-def read_csv(filepath, delimiter=',', mapping=None):
+def read_csv(filepath, delimiter=',', mapping=None, add_row_number_field=None):
 	filepath = os.path.expanduser(filepath)
 	if not os.path.isfile(filepath):
 		return None
 	records = []
 	with open(filepath) as csv_file:
 		csv_read = csv.reader(csv_file, delimiter=delimiter)
-		
+
 		headers = []
+		if add_row_number_field:
+			headers.append(add_row_number_field)
 		cnt = 0
 		for item in csv_read:
 			if cnt == 0:
@@ -537,11 +540,13 @@ def read_csv(filepath, delimiter=',', mapping=None):
 					headers.append(convert_to_snakecase(field))
 			else:
 				record = {}
+				if add_row_number_field:
+					item.insert(0, cnt)
 				for i in range(len(headers)):
 					if len(item) >= i:
 						record[headers[i]] = item[i]
 				records.append(record)
-			cnt += 1;
+			cnt += 1
 	if mapping and type(mapping) is dict:
 		return map_csv(records, mapping)
 	return records
@@ -550,10 +555,11 @@ def read_csv(filepath, delimiter=',', mapping=None):
 new_records = common.map_csv(records, {
 	"field": "csv_field_name",
 	"field": { "name": "csv_field_name" },
-	"field": { "name": "csv_field_name", "type": "str", "transforms": ['lower', 'remove_extra_spaces'] },
+	"field": { "name": "csv_field_name", "type": "str", "transforms": ['lower', 'remove_extra_spaces', 'pad0=3'] },
 	"field": { "name": "csv_field_name", "type": "int", "multiplier": 100 },
 	"field": { "name": "csv_field_name", "type": "float" },
 	"field": { "name": "csv_field_name", "type": "bool", "true": ['yes', 'y'] },
+	"field": { "name": "csv_field_name", "type": "map", "map": { "value_from_import_field": "value_to_use" } },
 	"field": { "type": "literal", "value": "value_of_any_type" }
 })
 """
@@ -570,14 +576,14 @@ def _map_csv_record(record, mapping):
 	if type(record) is not dict:
 		raise TypeError("_map_csv_record() record must be type dict. It is {}.".format(type(record)))
 	global _map_csv_last_record
-	
+
 	new_record = {}
 	for key, definition in mapping.items():
 		if type(definition) is str:
 			definition = { "name": definition }
 		elif type(definition) is not dict:
 			continue
-		
+
 		if 'type' in definition and definition['type'] == 'dict':
 			if 'mapping' not in definition or type(definition['mapping']) is not dict:
 				continue
@@ -591,16 +597,16 @@ def _map_csv_record(record, mapping):
 			continue
 		elif definition['name'] not in record:
 			continue
-		
+
 		value = record[definition['name']]
 		field_type = 'str'
-		if 'type' in definition and definition['type'] in ['str', 'int', 'float', 'bool', 'datetime', 'date', 'time']:
+		if 'type' in definition and definition['type'] in ['str', 'int', 'float', 'bool', 'datetime', 'date', 'time', 'map']:
 			field_type = definition['type']
-		
+
 		if not value:
 			if 'carry' in definition and definition['carry'] and key in _map_csv_last_record:
 				new_record[key] = _map_csv_last_record[key]
-		elif field_type == 'str':
+		elif field_type == 'str' or field_type == 'map':
 			value = str(value)
 			value = value.strip()
 			if 'concat' in definition and definition['concat'] in record and record[definition['concat']]:
@@ -615,7 +621,15 @@ def _map_csv_record(record, mapping):
 						value = value.upper()
 					elif transform == 'remove_extra_spaces':
 						value = re.sub(r'  +', ' ', value)
-			new_record[key] = value
+					elif re.match(r'left=', transform, re.I):
+						value = value[0:int(transform[5:])]
+					elif re.match(r'pad0=', transform, re.I):
+						value = value.zfill(int(transform[5:]))
+			if field_type == 'map':
+				if definition.get('map') and type(definition['map']) is dict and value in definition['map']:
+					new_record[key] = definition['map'][value]
+			else:
+				new_record[key] = value
 		elif field_type == 'int':
 			float_value = convert_to_float(value)
 			if float_value is not None and 'multiplier' in definition:
@@ -663,7 +677,7 @@ def _map_csv_record(record, mapping):
 			value = convert_string_to_time(value)
 			if value is not None:
 				new_record[key] = value
-	
+
 	_map_csv_last_record = new_record
 	return new_record
 
@@ -672,7 +686,9 @@ success = common.write_csv(filepath, array_of_dicts, fields=array_of_fields_to_i
 """
 def write_csv(filepath, data, fields=None, include_header=True, make_dir=False):
 	filepath = os.path.expanduser(filepath)
-	if not fields and type(data[0]) is dict:
+	if not data:
+		include_header = False
+	elif not fields and type(data[0]) is dict:
 		fields = data[0].keys()
 	if make_dir:
 		base_dir = os.path.dirname(filepath)
@@ -740,7 +756,7 @@ def set_basic_args(event):
 # 				print("dry_run from header")
 # 				print("event['headers'] {}: {}".format(type(event['headers']), event['headers']))
 				break
-	
+
 	log_level = 5
 	# From direct CLI
 	if convert_to_bool(event.get('extra_verbose')):
@@ -768,7 +784,7 @@ def set_basic_args(event):
 			elif header.upper() == 'X-LOG-LEVEL':
 				log_level = convert_to_int(value) or 5
 				break
-	
+
 	limit = None
 	# From direct CLI
 	if 'limit' in event:
@@ -781,7 +797,7 @@ def set_basic_args(event):
 			if header.upper() == 'X-LIMIT':
 				limit = convert_to_int(value) or None
 				break
-	
+
 	if log_level >= 7:
 		print(f"event: {event}")
 	if log_level >= 6:
@@ -791,7 +807,7 @@ def set_basic_args(event):
 		if limit:
 			print(", Limit ({limit})", end='')
 		print('')
-	
+
 	return dry_run, log_level, limit
 
 
@@ -862,7 +878,7 @@ def plural(number, text):
 	text = str(number) + " " + text
 	if number == 1:
 		return text
-	
+
 	if re.search(r'brother$', text):
 		return re.sub(r'brother$', 'brethren', text)
 	if re.search(r'child$', text):
@@ -914,7 +930,7 @@ def conjunction(orig_words, conj='and', quote=''):
 		return str(quote + orig_words + quote)
 	if len(orig_words) < 1:
 		return ''
-	
+
 	words = []
 	for word in orig_words:
 		if type(word) is list:
@@ -924,7 +940,7 @@ def conjunction(orig_words, conj='and', quote=''):
 			words.append('(' + conjunction(word, conj=subconj, quote=quote) + ')')
 		else:
 			words.append(quote + str(word) + quote)
-	
+
 	conj = ' ' + conj + ' '
 	if len(words) == 1:
 		return words[0]
@@ -995,6 +1011,14 @@ def match_capitalization(original, word):
 	else:
 		return word.lower()
 
+def title_capitalize(text):
+	new_text = text.title()
+	# Lowercase word exceptions
+	new_text = re.sub(r'\b(a|an|and|as|at|but|by|for|in|nor|of|off|on|or|out|per|so|the|to|up|via|yet)\b', lambda m: f"{m.group(1).lower()}", new_text, 0, re.IGNORECASE)
+	# Capitalize first word
+	new_text = new_text[0].upper() + new_text[1:]
+	return new_text
+
 """
 summary = common.truncate(text, limit, type='word')
 summary = common.truncate(text, limit, type='character|word|sentence|paragraph')
@@ -1003,11 +1027,11 @@ summary = common.truncate(text, limit, type='word', include_ellipsis=True, remov
 def truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=False):
 	output = ''
 	cnt = 0
-	
+
 	if remove_newlines:
 		text = re.sub(r'\s*\n+\s*', ' ', text, 0)
 	text = re.sub(r'\s+', ' ', text.rstrip(), 0)
-	
+
 	if type == 'character':
 		if len(text) <= limit:
 			return text
@@ -1018,12 +1042,12 @@ def truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=Fa
 		else:
 			output = text[0:limit]
 		return output
-	
+
 	while text:
 		if cnt >= limit:
 			break
 		cnt += 1
-		
+
 		part = ''
 		if type == 'paragraph':
 			pmatch = re.compile(r'^(.+?\n+)')
@@ -1048,7 +1072,7 @@ def truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=Fa
 			text = ""
 			break
 		output += part
-	
+
 	output = output.rstrip()
 	if include_ellipsis and text:
 		output += '…'
@@ -1079,7 +1103,7 @@ def flatten_hash(input, upper_key=None, inner_key=None, delimiter='-', exempt=[]
 			new_key = upper_key
 		elif upper_key:
 			new_key = upper_key + delimiter + key
-		
+
 		if type(value) is dict and key not in exempt:
 			sub_hash = flatten_hash(value, new_key, key, delimiter=delimiter)
 			for subkey, subvalue in sub_hash.items():
@@ -1212,7 +1236,7 @@ def to_list(input=None, key=None, unique=False):
 	# already a list
 	elif type(input) is list:
 		output = input
-	
+
 	if unique:
 		return unique_list(output)
 	return output
@@ -1580,14 +1604,14 @@ def get_date_string(input=None):
 def get_epoch(dt=None):
 	if dt:
 		dt = convert_string_to_datetime(dt)
-	else:	
+	else:
 		dt = get_dt_now()
 	return int(dt.timestamp())
 
 def get_epoch_ms(dt=None):
 	if dt:
 		dt = convert_string_to_datetime(dt)
-	else:	
+	else:
 		dt = get_dt_now()
 	return int(dt.timestamp() * 1000)
 
@@ -1653,12 +1677,12 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			max_length = 2147483647
 		if ftype == 'bool':
 			ftype = 'boolean'
-		
+
 		# Undo query lists into values
 		if process_query:
 			if key in body and type(body[key]) is list and len(body[key]) == 1 and ftype != 'list':
 				body[key] = body[key][0]
-		
+
 		# Build map of fields
 		field_map[key] = {
 			"type": ftype,
@@ -1668,7 +1692,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 		}
 		if sub_map:
 			field_map[key] = sub_map
-		
+
 		# Check required
 		if key not in body or body[key] is None:
 			if (type(required) is list or required):
@@ -1679,7 +1703,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 				errors.append("'{}' must be one of '{}'".format(key, "', '".join(required)))
 		if remove_none and body[key] is None:
 			continue
-		
+
 		# Verify type
 		if allow_none and body[key] is None:
 			pass
@@ -1723,7 +1747,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			if not is_doc_id(body[key]):
 				errors.append("'{}' must be a doc_id".format(key))
 				continue
-		
+
 		# Verify restrictions and set values
 		if sub_map and ftype in ['str', 'int']:
 			if body[key] not in sub_map:
@@ -1773,7 +1797,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			output[key] = convert_string_to_time(body[key])
 		elif ftype in ["uuid", "doc_id"]:
 			output[key] = str(body[key])
-	
+
 	# process required_or
 	if required_or and type(required_or) is list:
 		found = False
@@ -1800,7 +1824,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			message = conjunction(required_or, conj='or', quote="'")
 			errors.append("One of the following is required: {}".format(message))
 	return output, errors
-		
+
 
 ## Logging
 
@@ -1881,7 +1905,7 @@ def convert_tags(tags_dict, case='lower'):
 		return tags_dict
 	if type(tags_dict) is not dict:
 		return []
-	
+
 	tags_list = []
 	for key, value in tags_dict.items():
 		if case == 'upper':
@@ -1894,7 +1918,7 @@ def convert_tags(tags_dict, case='lower'):
 				'key': key,
 				'value': value
 			})
-		
+
 	return tags_list
 
 """
@@ -1908,7 +1932,7 @@ def convert_dict_to_list(input_dict, case='upper'):
 		return input_dict
 	if type(input_dict) is not dict:
 		return []
-	
+
 	output_list = []
 	for key, value in input_dict.items():
 		if case == 'upper':
@@ -1921,7 +1945,7 @@ def convert_dict_to_list(input_dict, case='upper'):
 				'key': key,
 				'value': value
 			})
-		
+
 	return output_list
 
 """
@@ -1932,7 +1956,7 @@ def convert_list_to_dict(input_list):
 		return input_list
 	if type(input_list) is not list:
 		return {}
-	
+
 	output_dict = {}
 	for element in input_list:
 		if type(element) is not dict:
@@ -1951,10 +1975,10 @@ def convert_list_to_dict(input_list):
 			value = element['value']
 		else:
 			continue
-		
+
 		output_dict[key] = value
-		
-	return output_dict	
+
+	return output_dict
 
 """
 unquoted_list = common.unquote_list(quoted_list)
@@ -1976,7 +2000,8 @@ def cast_args(input={}, specs={}, should_fill=False):
 		return input
 	if type(specs) is not list and type(specs) is not dict:
 		return input
-	
+
+	args = {}
 	if type(specs) is list:
 		for key in specs:
 			if key not in input and should_fill:
@@ -1984,7 +2009,7 @@ def cast_args(input={}, specs={}, should_fill=False):
 			else:
 				args[key] = input[key]
 		return args
-	
+
 	if type(specs) is dict:
 		for key, value in specs.items():
 			if key not in input and should_fill:
@@ -2028,4 +2053,3 @@ def is_success(response):
 			if response.get('statusCode') >= 200 and response.get('statusCode') < 300:
 				return True
 	return False
-

@@ -58,20 +58,40 @@ class Object:
 	"""
 	response = file.get_file(filepath=None)
 	"""
-	def get_file(self, filepath):
+	def get_file(self, filepath=None):
+		response = None
 		if self.dry_run:
 			self.ui.dry_run(f"s3.get_object('{self.bucket.name}', '{self.object_name}')")
 			return True
-		response = self.client.get_object(
-			Bucket = self.bucket.name,
-			Key = self.object_name
-		)
+		try:
+			response = self.client.get_object(
+				Bucket = self.bucket.name,
+				Key = self.object_name
+			)
+		except NoCredentialsError:
+			print("Error: AWS credentials not found.")
+		except PartialCredentialsError:
+			print("Error: Incomplete AWS credentials.")
+		except ClientError as e:
+			# Handle specific client errors
+			if e.response['Error']['Code'] == 'NoSuchKey':
+# 				print(f"Error: The object '{self.object_name}' does not exist in bucket '{self.bucket.name}'.")
+				return None
+			elif e.response['Error']['Code'] == 'NoSuchBucket':
+				print(f"Error: The bucket '{self.bucket.name}' does not exist.")
+				return None
+			else:
+				print(f"ClientError: {e.response['Error']['Message']}")
+		except Exception as e:
+			print(f"An unexpected error occurred: {str(e)}")
+		
 		if type(response) is dict and 'Body' in response:
 			if filepath:
 				common.write_file(filepath, response['Body'])
 				return True
 			else:
-				return response['Body']
+				content = response['Body'].read().decode('utf-8')
+				return content
 		return None
 	
 	"""

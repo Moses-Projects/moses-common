@@ -20,19 +20,19 @@ class Interface:
 	ui = moses_common.ui.Interface()
 	"""
 	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None):
-		
+
 		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
-		
+
 		self.force_whitespace = common.convert_to_bool(force_whitespace) or False
-		
+
 		self.usage_message = usage_message
 		self.params = None
-		
+
 		self._colors = self._get_term_color_numbers()
-		
+
 		self._args = {}
 		self._opts = {}
-	
+
 	@property
 	def supports_color(self):
 		if os.environ.get('TERM') and os.environ.get('TERM') not in ['dumb', 'tty']:
@@ -42,13 +42,13 @@ class Interface:
 	def is_person(self):
 		if self.supports_color or os.environ.get('SSH_AUTH_SOCK'):
 			return True
-	
+
 	@property
 	def is_aws_lambda(self):
 		if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
 			return True
-	
-	
+
+
 	### Arg handing
 	"""
 	arguments, options = self.get_options({
@@ -85,12 +85,14 @@ class Interface:
 			"value": "right column"
 		} ],
 		"options": [ {
-			"short": "v",
-			"long": "verbose"
-		}, {
 			"short": "f",
 			"long": "file",
 			"type": "file"
+		}, {
+			"type": "break"
+		}, {
+			"short": "v",
+			"long": "verbose"
 		} ]
 	})
 	"""
@@ -99,14 +101,14 @@ class Interface:
 		# Prep options
 		short_opts = ""
 		long_opts = []
-		
+
 		if 'options' not in params:
 			params['options'] = []
 		params['options'].append({
 			"short": "h",
 			"long": "help"
 		})
-		
+
 		if 'options' in params:
 			config = common.read_config()
 			for opt in params['options']:
@@ -130,7 +132,7 @@ class Interface:
 						self._opts[opt['long']] = False
 					else:
 						self._opts[opt['long']] = None
-		
+
 		opts = []
 		args = []
 		# Parse options and arguments
@@ -139,7 +141,7 @@ class Interface:
 			original_string = sys.stdin.read()
 			print(original_string)
 			input_string = original_string.strip()
-			
+
 			# Process config
 			if re.match(r'config$', input_string.lower(), re.M):
 				# Print and save config
@@ -176,7 +178,7 @@ class Interface:
 								opts.append((f"-{opt['short']}", name))
 								opt_found = True
 								break
-							
+
 				# If no options found on first line, use it for args
 				if not opt_found:
 					input_string = original_string
@@ -196,7 +198,7 @@ class Interface:
 								input_string = input_parts[1]
 							else:
 								input_string = None
-						
+
 		# Parse options and arguments
 		#   For CLI
 		else:
@@ -207,7 +209,7 @@ class Interface:
 				self.error(error.capitalize())  # will print something like "option -a not recognized"
 				self.usage()
 				sys.exit(2)
-		
+
 		# Handle options
 		for o, a in opts:
 			if o in ("-h", "--help"):
@@ -229,13 +231,13 @@ class Interface:
 							self._opts[opt['short']] = a
 						if 'long' in opt:
 							self._opts[opt['long']] = a
-		
+
 		if 'options' in params:
 			for param in params['options']:
 				label = param['name']
 				if 'label' in param:
 					label = param['label']
-				
+
 				if param.get('long') and 'default' in param and not self._opts[param['long']]:
 					self._opts[param['long']] = param['default']
 					if 'short' in param:
@@ -248,12 +250,12 @@ class Interface:
 						else:
 							self.usage()
 							sys.exit(2)
-		
+
 		# Handle arguments
 		if 'args' in params:
 			for param in params['args']:
 				label = param.get('label') or param['name']
-				
+
 				if 'required' in param and param['required'] and not len(args):
 					self.error(f"Argument '{label}' is required")
 					if common.is_bbedit():
@@ -261,7 +263,7 @@ class Interface:
 					else:
 						self.usage()
 						sys.exit(2)
-				
+
 				if len(args):
 					value = args.pop(0)
 					if 'values' in param and type(param['values']) is list:
@@ -293,7 +295,7 @@ class Interface:
 				else:
 					self._args[param['name']] = None
 			self._args['args'] = args
-		
+
 		# Print and save config for CLI
 		if params.get('args') and len(params['args']) >= 1:
 			first_arg = self._args[params['args'][0].get('name')]
@@ -302,7 +304,7 @@ class Interface:
 				self.process_config(params, self._args.get('args'))
 				sys.exit()
 		return self._args, self._opts
-	
+
 	def process_config(self, params, lines=None):
 		if 'options' not in params:
 			self.warning("This script contains no options to store in a config.")
@@ -336,8 +338,8 @@ class Interface:
 			if was_changed:
 				filename = common.save_config(config)
 				self.info(f"Config saved to {filename}")
-			
-	
+
+
 	"""
 	inputs = ui.resolve_inputs(field_list, file)
 	"""
@@ -346,7 +348,7 @@ class Interface:
 		if file:
 			inputs = common.read_csv(file)
 			if not len(inputs):
-				self.error("No records found in CSV '{}'".format(opts['file']))
+				self.error(f"No records found in CSV '{file}'")
 		else:
 			input = {}
 			for field in field_list:
@@ -359,11 +361,11 @@ class Interface:
 		return inputs
 
 
-	
-	
-	
+
+
+
 	### Output formatting
-	
+
 	# https://en.wikipedia.org/wiki/ANSI_escape_code
 	# https://en.wikipedia.org/wiki/Web_colors
 	def _get_term_color_numbers(self):
@@ -372,13 +374,13 @@ class Interface:
 		for color in colors:
 			color_hash[color['name']] = color['num']
 		return color_hash
-	
+
 	def _get_term_color_number_list(self):
 		return [
 			{ "name": "reset",			"num": 0 },
 			{ "name": "default",		"num": 39 },
 			{ "name": "default_bg",		"num": 49 },
-		
+
 			{ "name": "bold",			"num": 1 },	# reset 21 # yes
 			{ "name": "faint",			"num": 2 },	# reset 22 # yes
 			{ "name": "italic",			"num": 3 },	# reset 23
@@ -388,12 +390,12 @@ class Interface:
 			{ "name": "inverse",		"num": 7 },	# reset 27 # yes
 			{ "name": "conceal",		"num": 8 },	# reset 28 # yes
 			{ "name": "crossed",		"num": 9 },	# reset 29
-		
+
 			{ "name": "white",			"num": 97 },
 			{ "name": "silver",			"num": 37 },
 			{ "name": "gray",			"num": 90 },
 			{ "name": "black",			"num": 30 },
-		
+
 			{ "name": "red",			"num": 91 },
 			{ "name": "maroon",			"num": 31 },
 			{ "name": "yellow",			"num": 93 },
@@ -406,12 +408,12 @@ class Interface:
 			{ "name": "azure",			"num": 34 },
 			{ "name": "pink",			"num": 95 },
 			{ "name": "magenta",		"num": 35 },
-		
+
 			{ "name": "white_bg",		"num": 107 },
 			{ "name": "silver_bg",		"num": 47 },
 			{ "name": "gray_bg",		"num": 100 },
 			{ "name": "black_bg",		"num": 40 },
-		
+
 			{ "name": "red_bg",			"num": 101 },
 			{ "name": "maroon_bg",		"num": 41 },
 			{ "name": "yellow_bg",		"num": 103 },
@@ -424,10 +426,10 @@ class Interface:
 			{ "name": "azure_bg",		"num": 44 },
 			{ "name": "pink_bg",		"num": 105 },
 			{ "name": "magenta_bg",		"num": 45 },
-		
+
 			{ "name": "reset_bg",		"num": 49 }
 		]
-	
+
 	def print_term_colors(self):
 		colors = self._get_term_color_number_list()
 		e = self.get_term_color('reset')
@@ -457,7 +459,7 @@ class Interface:
 				fs, fe = self.get_term_color([name, 'faint'])
 				ist, ie = self.get_term_color([name, 'inverse'])
 				print(f"{name:14s}: {ds:s}{name:14s}{de:s} {bs:s}{name:14s}{be:s} {fs:s}{name:14s}{fe:s} {ist:s}{name:14s}{ie:s}")
-	
+
 	def print_sample_sections(self):
 		self.info("This is info")
 		self.warning("This is a warning\n  Line 2")
@@ -470,13 +472,13 @@ class Interface:
 		self.success("This is success")
 		self.dry_run("This is a dry run")
 		self.verbose("This is verbose")
-	
-	
+
+
 	# color_code = ui.get_term_color(color_name)
 	def get_term_color(self, names):
 		if not self.supports_color:
 			return '', ''
-		
+
 		if type(names) is str:
 			names = [names]
 		color_nums = []
@@ -485,42 +487,42 @@ class Interface:
 				color_nums.append(str(self._colors[name]))
 		if not len(color_nums):
 			return '', ''
-		
+
 		code = "\033"
 		start = "{}[{}m".format(code, ';'.join(color_nums))
-		
+
 		end = code + "[0m"
 		if len(names) == 1:
 			if self._colors[names[0]] >= 2 and self._colors[names[0]] <= 9:
 				end = "{}[{}m".format(code, str(self._colors[name]+20))
 			elif re.search(r'_bg$', names[0]):
 				end = "{}[{}m".format(code, str(self._colors['reset_bg']))
-		
+
 		return start, end
-	
+
 	# formatted_string = ui.format_text(text, colors)
 	# formatted_string = ui.format_text(text, 'blue')
 	# formatted_string = ui.format_text(text, ['blue', 'white_bg', 'bold'])
 	def format_text(self, text, colors, quote=None):
 		text = str(text)
 		start, end = self.get_term_color(colors)
-		
+
 		quote_string = ''
 		if quote:
 			quote_string = self.make_quote(quote)
-		
+
 		output = []
 		lines = text.split("\n")
 		for line in lines:
 			output.append("{}{}{}{}".format(quote_string, start, line, end))
 		return "\n".join(output)
-	
+
 	def convert_slack_to_ansi(self, text=None):
 		if not text or not len(str(text)):
 			return ''
 		if not self.use_slack_format:
 			return text
-		
+
 	# 	$text =~ s/(?:^|(?<=\s))\*(\S.*?)\*/\e[1m$1\e[21m/g;
 		text = re.sub(r'(?:^|(?<=\s))\*(\S.*?)\*', lambda m: self.format_text(m.group(1), 'bold'), str(text))
 		text = re.sub(r'(?:^|(?<=\s))\_(\S.*?)\_', lambda m: self.format_text(m.group(1), 'underline'), text)
@@ -529,30 +531,30 @@ class Interface:
 		text = re.sub(r'^> ', lambda m: self.make_quote(), text)
 # 		$text =~ s/^>/$self->make_quote('silver_bg')/egm;
 		return text
-	
+
 	def make_quote(self, color_name='silver_bg'):
 		if not re.search(r'_bg$', color_name) or not self.supports_color:
 			return '| '
 		indent = self.format_text(' ', color_name)
 		return indent + ' '
-	
+
 	def process_whitespace(self, text):
 		if self.is_aws_lambda and self.force_whitespace and type(text) is str:
 			return re.sub(r'  ', '. ', text)
 		return text
-	
+
 	def bold(self, text=None):
 		if not text or not len(str(text)):
 			return ''
 		return self.format_text(text, 'bold')
-	
+
 	def body(self, text=None):
 		text = self.process_whitespace(text)
 		text = self.convert_slack_to_ansi(text)
 		if not len(text):
 			return
 		print(text)
-	
+
 	def title(self, text=None):
 		if not text:
 			return
@@ -560,7 +562,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(f' {text:s} ', ['blue', 'bold', 'inverse']))
-	
+
 	def header(self, text=None):
 		if not text:
 			return
@@ -568,7 +570,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['blue', 'bold', 'underline']))
-	
+
 	def header2(self, text=None):
 		if not text:
 			return
@@ -576,7 +578,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['bold', 'underline']))
-	
+
 	def success(self, text=None):
 		if not text:
 			return
@@ -584,7 +586,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['green', 'bold']))
-	
+
 	def dry_run(self, text=None):
 		if not text:
 			return
@@ -592,7 +594,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['silver'], quote='silver_bg'))
-	
+
 	def verbose(self, text=None):
 		if not text:
 			return
@@ -600,7 +602,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['gray'], quote='gray_bg'))
-	
+
 	# syslog severity 6
 	def info(self, text=None):
 		if not text:
@@ -609,7 +611,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['gray'], quote='gray_bg'))
-	
+
 	# syslog severity 4
 	def warning(self, text=None):
 		if not text:
@@ -618,7 +620,7 @@ class Interface:
 			text = "\n".join(text)
 		text = self.convert_slack_to_ansi(text)
 		print(self.format_text(text, ['olive', 'bold'], quote='olive_bg'))
-	
+
 	# syslog severity 3
 	def error(self, text=None):
 		if not text:
@@ -630,7 +632,7 @@ class Interface:
 		else:
 			text = self.convert_slack_to_ansi(text)
 			print(self.format_text(f"ERROR: {text}", ['maroon', 'bold'], quote='maroon_bg'))
-	
+
 	def usage(self):
 		if self.usage_message:
 			self.info(self.usage_message)
@@ -638,7 +640,7 @@ class Interface:
 		if 'description' in self.params:
 			self.info(self.params['description'] + "\n")
 		script_name = os.path.basename(sys.modules['__main__'].__file__)
-		
+
 		# Description
 		self.info("Usage:")
 		if common.is_bbedit():
@@ -647,19 +649,23 @@ class Interface:
 			if 'args' in self.params:
 				arg_list = []
 				for arg in self.params['args']:
-					arg_list.append(arg['name'])
-				script_line = "<" + ">\n  <".join(arg_list) + ">"
+					if arg.get('required'):
+						script_line += f"\n  <{arg['name']}>"
+					else:
+						script_line += f"\n  [{arg['name']}]"
 				self.info(f"  {script_line}\n")
-			
+
 		else:
 			script_line = script_name
 			if 'args' in self.params:
 				arg_list = []
 				for arg in self.params['args']:
-					arg_list.append(arg['name'])
-				script_line += " <" + "> <".join(arg_list) + ">"
+					if arg.get('required'):
+						script_line += f" <{arg['name']}>"
+					else:
+						script_line += f" [{arg['name']}]"
 			self.info(f"  {script_line}\n")
-		
+
 		# Commands
 		if 'command_help' in self.params:
 			max_length = 0
@@ -672,23 +678,33 @@ class Interface:
 				else:
 					self.info(f"    {line['name']:<{max_length}}  {line['value']}")
 			self.info(" ")
-		
+
 		# Args
 		if 'args' in self.params:
 			max_length = 0
 			for line in self.params['args']:
-				if line.get('help') and len(line['name']) > max_length:
+				if len(line['name']) > max_length:
 					max_length = len(line['name'])
+				if 'help' not in line:
+					if 'values' in line:
+						line['help'] = "One of " + common.conjunction(line['values'], conj='or', quote='"') + "."
+					else:
+						line['help'] = line['label']
 			if max_length > 0:
 				self.info("  Args (* required):")
+				max_length += 2
 				for line in self.params['args']:
+					if line.get('required'):
+						name = f"<{line['name']}>"
+					else:
+						name = f"[{line['name']}]"
 					required = ' '
 					if 'required' in line and line['required']:
 						required = '*'
 					if line.get('help'):
-						self.info(f"  {required} <{line['name']:<{max_length}}>  {line['help']}")
+						self.info(f"  {required} {name:<{max_length}}  {line['help']}")
 				self.info(" ")
-		
+
 		# Options
 		if 'options' in self.params:
 			max_length = 0
@@ -719,10 +735,10 @@ class Interface:
 						label += '=<>'
 					else:
 						label += ' <>'
-				
+
 				if len(label) > max_length:
 					max_length = len(label)
-				
+
 				value = opt.get('help')
 				if value:
 					if opt.get('default'):
@@ -742,8 +758,12 @@ class Interface:
 							value += f" Defaults to \"{opt['default']}\"."
 					elif opt.get('default'):
 						value = f"Defaults to \"{opt['default']}\"."
-				
-				if label and value:
+
+				if opt.get('type') == 'break':
+					output.append({
+						"type": "break"
+					})
+				elif label and value:
 					output.append({
 						"name": label,
 						"value": value
@@ -751,7 +771,10 @@ class Interface:
 			if output:
 				self.info("  Options:")
 				for line in output:
-					self.info(f"    {line['name']:<{max_length}}  {line['value']}")
+					if line.get('type') == 'break':
+						self.info(" ")
+					else:
+						self.info(f"    {line['name']:<{max_length}}  {line['value']}")
 				self.info(" ")
 				self.info("  Config:")
 				if common.is_bbedit():
@@ -762,8 +785,8 @@ class Interface:
 					self.info(f"    Save:")
 					self.info(f"      `{script_name} config <option name>:<option value> [<option name>:<option value>]`")
 			self.info(" ")
-		
-	
+
+
 	def pretty(self, input, label=None, colorize=True):
 		if label:
 			label = self.convert_slack_to_ansi(label)
@@ -777,15 +800,15 @@ class Interface:
 				input = re.sub(r': ([0-9.-]+)', lambda m: ': ' + self.format_text(m.group(1), 'maroon'), str(input))
 				input = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(input))
 		print(input)
-	
-	
+
+
 	def format_hash_list(self, records, fields=None):
 		records = common.to_list(records)
 		if not records:
 			return ''
 		if not fields:
 			fields = list(records[0].keys())
-		
+
 		## Find field lengths and types
 		max_field_length = 1
 		for field in fields:
@@ -797,7 +820,7 @@ class Interface:
 				length = len(str(record.get(field)))
 				if length > max_value_length:
 					max_value_length = length
-		
+
 		## Assemble output
 		output = ""
 		hr = "-" * (max_field_length + 3 + max_value_length)
@@ -810,7 +833,7 @@ class Interface:
 				output += f"{field:>{max_field_length}} : {value}\n"
 		output += hr
 		return output
-	
+
 	def format_table(self, records, fields=None,
 			include_frame=False,
 			include_frame_hr=False,
@@ -824,7 +847,7 @@ class Interface:
 		divider = " "
 		if include_frame:
 			divider = "|"
-		
+
 		## Find field lengths and types
 		field_info = {}
 		for field in fields:
@@ -842,10 +865,10 @@ class Interface:
 					field_info[field]['length'] = length
 				if type(record.get(field)) is str:
 					field_info[field]['type'] = 'string'
-		
+
 		## Assemble output
 		output = ""
-		
+
 		# Add header
 		if include_header:
 			if include_frame and include_frame_hr:
@@ -856,7 +879,7 @@ class Interface:
 				cnt += 1
 				if cnt > 1:
 					output += divider
-				
+
 				length = field_info[field]['length']
 				if field_info[field]['type'] == 'numeric':
 					output += f"{field:>{length}}"
@@ -865,7 +888,7 @@ class Interface:
 			output += divider
 			output = self.format_text(output, 'underline')
 			output += "\n"
-		
+
 		# Add records
 		if include_frame and include_frame_hr:
 			output += self.format_table_hr(field_info, divider) + "\n"
@@ -886,19 +909,19 @@ class Interface:
 		if include_frame and include_frame_hr:
 			output += "\n" + self.format_table_hr(field_info, divider)
 		return output
-	
+
 	def format_table_hr(self, field_info, divider=""):
 		output = ""
 		divider = re.sub(r' ', '-', divider)
 		mid_separator = re.sub(r'\|', '+', divider)
 		left_separator = re.sub(r'^-*\|', '+', divider)
 		right_separator = re.sub(r'\|-*$', '+', divider)
-		
+
 		for field, definition in field_info.items():
 			if not output:
 				output += left_separator + '-' * definition['length']
 			else:
 				output += mid_separator + '-' * definition['length']
 		output += right_separator
-		
+
 		return output

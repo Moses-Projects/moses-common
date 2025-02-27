@@ -65,6 +65,50 @@ class Secrets:
 			else:
 				decoded_binary_secret = base64.b64decode(response['SecretBinary'])
 				return json.loads(decoded_binary_secret)
+	
+	"""
+	secret_list = secrets.list(secret_name_prefix)
+	"""
+	def list(self, prefix):
+		try:
+			response = self.client.list_secrets(
+				IncludePlannedDeletion=True,
+				Filters=[
+					{
+						'Key': 'name',
+						'Values': [prefix]
+					}
+				],
+				SortOrder='asc'
+			)
+		except ClientError as e:
+			if e.response['Error']['Code'] == 'DecryptionFailureException':
+				# Secrets Manager can't decrypt the protected secret text using the provided KMS key.
+				raise e
+			elif e.response['Error']['Code'] == 'InternalServiceErrorException':
+				# An error occurred on the server side.
+				raise e
+			elif e.response['Error']['Code'] == 'InvalidParameterException':
+				# You provided an invalid value for a parameter.
+				raise e
+			elif e.response['Error']['Code'] == 'InvalidRequestException':
+				# You provided a parameter value that is not valid for the current state of the resource.
+				raise e
+			elif e.response['Error']['Code'] == 'ResourceNotFoundException':
+				# We can't find the resource that you asked for.
+				return False
+			elif e.response['Error']['Code'] == 'AccessDeniedException':
+				# The Lambda function does not have permissions to access the secret.
+				raise e
+			raise e
+		else:
+			# Decrypts secret using the associated KMS CMK.
+			# Depending on whether the secret is a string or binary, one of these fields will be populated.
+			if 'SecretList' in response:
+				return response['SecretList']
+		return None
+
+
 
 """
 create_secret()

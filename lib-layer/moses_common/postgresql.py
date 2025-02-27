@@ -39,7 +39,7 @@ class DBH:
 		self.log_level = log_level
 		self.ui = ui or moses_common.ui.Interface()
 		self.now = datetime.datetime.utcnow()
-		
+
 		missing = []
 		self.connect_values = {}
 		for item in ['host', 'dbname', 'username', 'password']:
@@ -47,21 +47,21 @@ class DBH:
 				self.connect_values[item] = args[item]
 			else:
 				missing.append(item)
-		
+
 		self.connect_values['port'] = 5432
 		if args.get('port'):
 			self.connect_values['port'] = args['port']
-		
+
 		self.readonly = False
 		if 'readonly' in args and args['readonly']:
 			print("Enabling readonly")
 			self.readonly = True
 			if args.get('host_ro'):
 				self.connect_values['host'] = args['host_ro']
-		
+
 		if len(missing):
 			raise AttributeError("Missing {}: {}".format(common.plural(len(missing), 'connection arg'), common.conjunction(missing, conj='and', quote="'")))
-		
+
 		db = self.connect_values
 		try:
 			self._conn = psycopg2.connect(
@@ -73,24 +73,24 @@ class DBH:
 			)
 		except psycopg2.DatabaseError as e:
 			raise ConnectionError("Unable to connect to postgres database {}@{}:{}:{}".format(db['username'], db['host'], db['port'], db['dbname']))
-		
+
 		self._autocommit = True
 		self.autocommit = True
 		self.table_data = {}
-	
-	
+
+
 	@property
 	def log_level(self):
 		return self._log_level
-	
+
 	@log_level.setter
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
-    
+
 	@property
 	def autocommit(self):
 		return self._autocommit
-	
+
 	@autocommit.setter
 	def autocommit(self, value):
 		if self.readonly:
@@ -107,19 +107,19 @@ class DBH:
 			self._conn.commit()
 			self._conn.autocommit = False
 			self._autocommit = False
-    
+
 	"""
 	dbh.start_session()
 	"""
 	def start_session(self):
 		self.autocommit = False
-	
+
 	"""
 	dbh.commit_session()
 	"""
 	def commit_session(self):
 		self.autocommit = True
-	
+
 	"""
 	dbh.rollback_session()
 	"""
@@ -129,7 +129,7 @@ class DBH:
 		self._conn.rollback()
 		self._conn.autocommit = True
 		self._autocommit = True
-	
+
 	"""
 	dbh.close()
 	"""
@@ -137,16 +137,16 @@ class DBH:
 		self._conn.close()
 		self._conn = None
 		return True
-	
-	
+
+
 	# SQL Generation
-	
+
 	"""
 	quoted_identifier = dbh.identifier(value)
 	"""
 	def identifier(self, value):
 		return '"{}"'.format(value)
-	
+
 	"""
 	quoted_value = dbh.quote('one')
 		"'one'"
@@ -159,13 +159,13 @@ class DBH:
 		if type(value_list) is list:
 			if quote_arrays:
 				return self._quote_single_value(value_list)
-			
+
 			qvalues = []
 			for value in value_list:
 				qvalues.append(self._quote_single_value(value))
 			return qvalues
 		return self._quote_single_value(value_list)
-	
+
 	def _quote_single_value(self, value):
 		if value is None:
 			return 'NULL'
@@ -191,7 +191,7 @@ class DBH:
 			return 'ARRAY[' + ','.join(qlist) + ']'
 		elif type(value) is type(self.now):
 			return psql.Literal(value.isoformat()).as_string(self._conn)
-	
+
 	"""
 	quoted_value = dbh.quote_like(value)
 	"""
@@ -200,7 +200,7 @@ class DBH:
 		qsearch = re.sub(r"^\'", "'%", qsearch)
 		qsearch = re.sub(r"\'$", "%'", qsearch)
 		return qsearch
-	
+
 	"""
 	quoted_data, errors = dbh.quote_for_table(table_name, data, schema=None)
 	quoted_data, errors = dbh.quote_for_table(table_name, data, schema=None, check_nullable=True, defaults={})
@@ -208,7 +208,7 @@ class DBH:
 	def quote_for_table(self, table_name, data, schema=None, check_nullable=False, defaults={}):
 		"""
 		boolean - convert_to_bool()
-		date - 
+		date -
 			"current_date", "now()" -> get_current_date()
 			convert_string_to_date()
 		decimal, numeric, double precision - convert_to_float()
@@ -222,11 +222,11 @@ class DBH:
 		time -
 			"current_timestamp", "current_time", "now()" -> get_current_time()
 			convert_string_to_time()
-		uuid - 
+		uuid -
 			"uuid_generate_*()"
 			str()
 		array - ARRAY[*]::text[]
-		
+
 		Not yet supported:
 			bigserial
 			bit [ (n) ]
@@ -261,7 +261,7 @@ class DBH:
 		columns = self.get_column_info(table_name, schema=schema)
 		insert = {}
 		errors = []
-		
+
 		# Fill data with defaults
 		if len(defaults):
 			for key, value in defaults.items():
@@ -275,20 +275,20 @@ class DBH:
 					elif data[key]:
 						continue
 				data[key] = value
-		
+
 		# Convert each value per column
 		for column_name, column in columns.items():
 			required = False
 			if column['is_nullable'] == 'NO':
 				required = True
 			data_type = column['data_type'].lower()
-			
+
 			if column_name not in data:
 				if check_nullable and required and not column['column_default'] and not column['identity_generation']:
 					errors.append(f"'{schema}.{table_name}.\"{column_name}\"' is required")
 					raise TypeError(f"'{schema}.{table_name}.\"{column_name}\"' is required")
 				continue
-			
+
 			value = data[column_name]
 			if value is None:
 				if check_nullable and required:
@@ -392,9 +392,9 @@ class DBH:
 				insert[column_name] = value
 			else:
 				errors.append(f"'{column_name}' data type of {data_type} is not supported (table '{schema}.{table_name}')")
-		
+
 		return insert, errors
-	
+
 	"""
 	where_conditional = dbh.make_where_conditional(key, value)
 	where_conditional = dbh.make_where_conditional(key, value_list)
@@ -405,10 +405,10 @@ class DBH:
 		qkey = key
 		if should_quote_identifier:
 			qkey = self.identifier(key)
-		
+
 		if not operator:
 			operator = '='
-		
+
 		if type(value_list) is not list:
 			value_list = [value_list]
 		value_list = common.unique_list(value_list)
@@ -424,11 +424,11 @@ class DBH:
 				elif value_type == 'bool':
 					new_value_list.append(common.convert_to_bool(value))
 			value_list = new_value_list
-		
+
 		if not len(value_list):
 			operator = 'is'
 			value_list = [None]
-		
+
 		if operator == 'is' or type(value_list[0]) is bool:
 			value = common.convert_to_bool(value_list[0])
 			if value is None or value_list[0] is None:
@@ -448,12 +448,12 @@ class DBH:
 					subvalues.append('{} {} {}'.format(qkey, operator.upper(), self.quote_like(word)))
 				values.append(self.join_where_conditionals(subvalues, 'and'))
 			return self.join_where_conditionals(values, conjunction)
-		
+
 		if len(value_list) > 1:
 			return '{} IN ({})'.format(qkey, ', '.join(self.quote(value_list)))
 		else:
 			return '{} {} {}'.format(qkey, operator.upper(), self.quote(value_list[0]))
-	
+
 	"""
 	joined_where_conditionals = dbh.join_where_conditionals(conditional_list, conjunction)
 	"""
@@ -461,7 +461,7 @@ class DBH:
 		if conjunction.lower() != 'and' and conjunction.lower() != 'or':
 			raise AttributeError("Invalid where conditional conjunction. Can only be 'and' or 'or'.")
 		conjunction = ' ' + conjunction.upper() + ' '
-		
+
 		if len(conditional_list) > 1:
 			if include_paren:
 				return '(' + conjunction.join(conditional_list) + ')'
@@ -470,7 +470,7 @@ class DBH:
 		elif len(conditional_list) == 1:
 			return conditional_list[0]
 		return ''
-	
+
 	"""
 	where_clause = dbh.make_where_clause({ "key": "value" })
 	where_clause = dbh.make_where_clause({
@@ -505,7 +505,7 @@ class DBH:
 				else:
 					where_sql_list.append(self.make_where_conditional(key, value, should_quote_identifier=should_quote_identifier, split_words=split_words))
 		return self.join_where_conditionals(where_sql_list, conjunction)
-		
+
 	"""
 	where_clause = dbh.convert_hash_to_where([
 		[ "hash_key1" ],
@@ -528,7 +528,7 @@ class DBH:
 			operator = None
 			if len(field_def) >= 3:
 				operator = field_def[2]
-			
+
 			if key in query:
 				if type(field) is list:
 					conditional_hash = {}
@@ -543,7 +543,7 @@ class DBH:
 		if len(where_list):
 			return ' WHERE ' + self.join_where_conditionals(where_list, 'and', False)
 		return ''
-	
+
 	"""
 	modifiers_clause = dbh.make_modifiers_clause({
 		"sort": sort,
@@ -556,30 +556,30 @@ class DBH:
 		sql = ''
 		if 'sort' in args:
 			sql += " ORDER BY " + self.identifier(args['sort'])
-		
+
 		if 'order' in args and args['order'] and (args['order'].lower() == 'asc' or args['order'].lower() == 'desc'):
 			if sql:
 				sql += " " + args['order'].upper()
-		
+
 		if 'offset' in args and int(args['offset']) > 0:
 			sql += " OFFSET " + str(args['offset'])
-		
+
 		if 'limit' in args and int(args['limit']) > 0:
 			sql += " LIMIT " + str(args['limit'])
-		
+
 		return sql
-	
+
 	"""
 	insert_clause = dbh.make_insert_clause(field_list, data)
 	"""
 	def make_insert_clause(self, field_list, data):
 		if type(data) is not list:
 			data = [data]
-		
+
 		names = []
 		for field in field_list:
 			names.append(self.identifier(field))
-		
+
 		values = []
 		for record in data:
 			record_values = []
@@ -598,7 +598,7 @@ class DBH:
 			values.append('(' + ', '.join(record_values) + ')')
 		sql = '(' + ', '.join(names) + ') VALUES ' + ', '.join(values)
 		return sql
-	
+
 	def get_changes(self, table_name, source, target, schema=None):
 		qsource, serrors = self.quote_for_table(table_name, source, schema=schema, check_nullable=True)
 		qtarget, terrors = self.quote_for_table(table_name, target, schema=schema, check_nullable=True)
@@ -625,36 +625,36 @@ class DBH:
 			elif value != qtarget[field]:
 				changes[field] = source[field]
 		return changes
-	
+
 	# Get basic values
-	
+
 	"""
 	uuid = dbh.generate_uuid()
 	"""
 	def generate_uuid(self):
 		return self.select_value("SELECT uuid_generate_v4()")
-	
+
 	"""
 	timestamp = dbh.get_current_timestamp()
 	"""
 	def get_current_timestamp(self):
 		return self.select_value("SELECT CURRENT_TIMESTAMP")
-	
+
 	"""
 	time = dbh.get_current_time()
 	"""
 	def get_current_time(self):
 		return self.select_value("SELECT CURRENT_TIME")
-	
+
 	"""
 	date = dbh.get_current_date()
 	"""
 	def get_current_date(self):
 		return self.select_value("SELECT CURRENT_DATE")
-	
-	
+
+
 	# Get table info
-	
+
 	"""
 	column_hash = dbh.get_column_info(table_name, schema=None)
 	"""
@@ -670,14 +670,14 @@ class DBH:
 			definition['json_data_type'] = self.get_json_data_type(definition)
 			definition['python_data_type'] = self.get_python_data_type(definition)
 		self.table_data[schema][table_name] = column_map
-		
+
 		if record_type == 'list':
 			new_column_list = []
 			for field, definition in column_map.items():
 				new_column_list.append(definition)
 			return new_column_list
 		return column_map
-	
+
 	def get_json_data_type(self, column_info):
 		data_type = column_info.get('data_type')
 		type_map = {
@@ -722,7 +722,7 @@ class DBH:
 			"xml": "object"
 		}
 		return type_map.get(data_type)
-	
+
 	def get_python_data_type(self, column_info):
 		data_type = column_info.get('data_type')
 		type_map = {
@@ -767,17 +767,17 @@ class DBH:
 			"xml": "object"
 		}
 		return type_map.get(data_type)
-	
-	
+
+
 	# Get records
-	
+
 	"""
 	record = dbh.select_base(sql)
 	"""
 	def select_base(self, sql, args=None, record_type='list'):
 		if self._log_level >= 7:
 			print(sql)
-		
+
 		cursor = self._conn.cursor()
 		if args:
 			cursor.execute(sql, tuple(args))
@@ -788,11 +788,11 @@ class DBH:
 		if record_type == 'hash':
 			columns = [desc[0] for desc in cursor.description]
 		cursor.close()
-		
+
 		# Return list of lists
 		if record_type == 'list':
 			return list(rows)
-		
+
 		# Return list of hashes
 		records = []
 		for row in rows:
@@ -801,8 +801,8 @@ class DBH:
 				record[columns[i]] = row[i]
 			records.append(record)
 		return records
-		
-	
+
+
 	"""
 	boolean = dbh.exists(table_name, id_name, id_value, schema=None)
 	if record1[id_name] == id_value:
@@ -815,7 +815,7 @@ class DBH:
 		if len(results):
 			return True
 		return False
-	
+
 	"""
 	Returns the first record matching the id name and value.
 	
@@ -825,7 +825,7 @@ class DBH:
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		sql = "SELECT * FROM {}.{} WHERE {} = {} LIMIT 1".format(schema, table_name, self.identifier(id_name), self.quote(id_value))
 		return self.select_as_hash(sql)
-	
+
 	"""
 	Returns the latest record on the sort field.
 	record = dbh.select_latest(table_name, sort_name, schema=None)
@@ -839,7 +839,7 @@ class DBH:
 		if id_name and id_value:
 			sql = f"SELECT * FROM {schema}.{table_name} WHERE {self.identifier(id_name)} = {self.quote(id_value)} AND {self.identifier(sort_name)} = (SELECT MAX({self.identifier(sort_name)}) FROM {schema}.{table_name}) LIMIT 1"
 		return self.select_as_hash(sql)
-	
+
 	"""
 	Returns this first field of the first record.
 	
@@ -853,7 +853,7 @@ class DBH:
 			if len(values):
 				return values[0]
 		return None
-	
+
 	"""
 	Returns the first record as a list.
 	
@@ -866,7 +866,7 @@ class DBH:
 			return list(results[0])
 		else:
 			return None
-	
+
 	"""
 	Returns the first record as a hash.
 	
@@ -876,7 +876,7 @@ class DBH:
 	def select_as_hash(self, sql, args=None):
 		if self._log_level >= 7:
 			print(sql)
-		
+
 		cursor = self._conn.cursor()
 		if args:
 			cursor.execute(sql, tuple(args))
@@ -887,12 +887,12 @@ class DBH:
 			return
 		columns = [desc[0] for desc in cursor.description]
 		cursor.close()
-		
+
 		record = {}
 		for i in range(len(columns)):
 			record[columns[i]] = row[i]
 		return record
-	
+
 	"""
 	Returns the first field of all records as a list.
 	
@@ -905,7 +905,7 @@ class DBH:
 		for row in results:
 			records.append(list(row)[0])
 		return records
-	
+
 	"""
 	Returns the first field of all records as the hash value using the specified key as the hash key.
 	
@@ -919,7 +919,7 @@ class DBH:
 	def select_column_as_hash(self, sql, key, args=None):
 		if self._log_level >= 7:
 			print(sql)
-		
+
 		cursor = self._conn.cursor()
 		if args:
 			cursor.execute(sql, tuple(args))
@@ -928,7 +928,7 @@ class DBH:
 		rows = cursor.fetchall()
 		columns = [desc[0] for desc in cursor.description]
 		cursor.close()
-		
+
 		records = {}
 		for row in rows:
 			record = {}
@@ -936,7 +936,7 @@ class DBH:
 				record[columns[i]] = row[i]
 			records[record[key]] = row[0]
 		return records
-	
+
 	"""
 	Returns the first field of all records as the hash value using the specified key as the hash key.
 	
@@ -950,7 +950,7 @@ class DBH:
 	def select_column_as_hash_of_lists(self, sql, key, args=None):
 		if self._log_level >= 7:
 			print(sql)
-		
+
 		cursor = self._conn.cursor()
 		if args:
 			cursor.execute(sql, tuple(args))
@@ -959,7 +959,7 @@ class DBH:
 		rows = cursor.fetchall()
 		columns = [desc[0] for desc in cursor.description]
 		cursor.close()
-		
+
 		records = {}
 		for row in rows:
 			record = {}
@@ -969,7 +969,7 @@ class DBH:
 				records[record[key]] = []
 			records[record[key]].append(row[0])
 		return records
-	
+
 	"""
 	Returns each record as a list in a list.
 	
@@ -982,7 +982,7 @@ class DBH:
 		for row in results:
 			records.append(list(row))
 		return records
-	
+
 	"""
 	Returns each record as a hash in a list.
 	
@@ -991,7 +991,7 @@ class DBH:
 	"""
 	def select_as_list_of_hashes(self, sql, args=None):
 		return self.select_base(sql, args, record_type='hash')
-	
+
 	"""
 	Returns each record as a hash in a hash using the specified key as the hash key.
 	hash key must be unique or records will be missed.
@@ -1005,12 +1005,12 @@ class DBH:
 	"""
 	def select_as_hash_of_hashes(self, sql, key, args=None):
 		rows = self.select_base(sql, args, record_type='hash')
-		
+
 		records = {}
 		for row in rows:
 			records[row[key]] = row
 		return records
-	
+
 	"""
 	Returns each record as a hash in a list under the main hash using the specified key as the main hash key.
 	hash key does not have to be unique.
@@ -1025,7 +1025,7 @@ class DBH:
 	def select_as_hash_of_lists(self, sql, key, args=None):
 		if self._log_level >= 7:
 			print(sql)
-		
+
 		cursor = self._conn.cursor()
 		if args:
 			cursor.execute(sql, tuple(args))
@@ -1034,7 +1034,7 @@ class DBH:
 		rows = cursor.fetchall()
 		columns = [desc[0] for desc in cursor.description]
 		cursor.close()
-		
+
 		records = {}
 		for row in rows:
 			record = {}
@@ -1044,10 +1044,10 @@ class DBH:
 				records[record[key]] = []
 			records[record[key]].append(record)
 		return records
-	
-	
+
+
 	# Change records
-	
+
 	"""
 	record = dbh.do(sql)
 	"""
@@ -1057,16 +1057,16 @@ class DBH:
 			return 1
 		if self._log_level >= 6:
 			self.ui.body(sql)
-		
+
 		sql = sql.strip()
 		command = 'do'
 		sql_parts = re.match(r'(\w+)', sql)
 		if sql_parts:
 			command = sql_parts.group(1)
-		
+
 		if self.readonly:
 			raise ConnectionError("Attempting {command} when set to readonly")
-		
+
 		cursor = self._conn.cursor()
 		if args:
 			try:
@@ -1088,17 +1088,17 @@ class DBH:
 			self._conn.commit()
 		cursor.close()
 		return rowcount
-	
+
 	"""
 	num_of_inserts = dbh.insert(table_name, data)
-	num_of_inserts = dbh.insert(table_name, data, schema=None, quote_keys=True, defaults={})
+	num_of_inserts = dbh.insert(table_name, data, schema=None, quote_keys=True, export_sql=False, defaults={})
 	"""
-	def insert(self, table_name, data, schema=None, quote_keys=False, defaults={}):
+	def insert(self, table_name, data, schema=None, quote_keys=False, export_sql=False, defaults={}):
 		if type(data) is not list:
 			data = [data]
 		if not len(data):
 			return 0
-		
+
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		multi = True
 		key_list = []
@@ -1114,7 +1114,7 @@ class DBH:
 				record_key_list = sorted(insert.keys())
 				if key_list != record_key_list:
 					multi = False
-		
+
 		# Combined inserts
 		if multi:
 			# Quote keys
@@ -1124,7 +1124,7 @@ class DBH:
 				if quote_keys:
 					qkey = self.identifier(key)
 				qkey_list.append(qkey)
-			
+
 			# Quote and compile values
 			values_list = []
 			for record in insert_data:
@@ -1133,11 +1133,13 @@ class DBH:
 					value_list.append(record[key])
 				values_list.append("({})".format(', '.join(value_list)))
 			sql = "INSERT INTO {}.{} ({}) VALUES {}".format(schema, table_name, ', '.join(qkey_list), ', '.join(values_list))
+			if export_sql:
+				return sql
 			response = self.do(sql)
 			if self.dry_run:
 				return len(insert_data)
 			return response
-		
+
 		# Individual inserts
 		cnt = 0
 		for record in insert_data:
@@ -1149,29 +1151,31 @@ class DBH:
 					qkey = self.identifier(key)
 				qkey_list.append(qkey)
 				value_list.append(record[key])
-			
+
 			sql = "INSERT INTO {}.{} ({}) VALUES ({})".format(schema, table_name, ', '.join(qkey_list), ', '.join(value_list))
+			if export_sql:
+				return sql
 			response = self.do(sql)
 			cnt += response
 		return cnt
-	
+
 	"""
 	num_of_updates = dbh.update(table_name, key_name, data)
-	num_of_updates = dbh.update(table_name, key_name, data, schema=None, quote_keys=True)
+	num_of_updates = dbh.update(table_name, key_name, data, schema=None, quote_keys=True, export_sql=False)
 	"""
-	def update(self, table_name, key_name, data, schema=None, quote_keys=False):
+	def update(self, table_name, key_name, data, schema=None, quote_keys=False, export_sql=False):
 		if type(data) is not list:
 			data = [data]
 		if not len(data):
 			return 0
-		
+
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		cnt = 0
 		for record in data:
 			update, errors = self.quote_for_table(table_name, record, schema=schema)
 			if len(errors):
 				raise ValueError("\n".join(errors))
-			
+
 			set_pairs = []
 			where_hash = {}
 			for key, value in update.items():
@@ -1184,15 +1188,17 @@ class DBH:
 					set_pairs.append("{} = {}".format(qkey, update[key]))
 			if not len(where_hash) or not len(set_pairs):
 				return
-			
+
 			where_clause = self.make_where_clause(where_hash, should_quote_identifier=quote_keys)
 			if not where_clause:
 				continue
 			sql = "UPDATE {}.{} SET {} WHERE {}".format(schema, table_name, ', '.join(set_pairs), where_clause)
-			
+			if export_sql:
+				return sql
+
 			cnt += self.do(sql)
 		return cnt
-	
+
 	"""
 	num_of_deletes = dbh.delete(table_name, {
 		"key": "value",
@@ -1204,19 +1210,21 @@ class DBH:
 	})
 	num_of_deletes = dbh.delete(table_name, {
 		"key": "value"
-	}, schema=None, conjunction='and', quote_keys=False)
+	}, schema=None, conjunction='and', should_quote_identifier=False, export_sql=False)
 	"""
-	def delete(self, table_name, where_clause, conjunction='and', schema=None, should_quote_identifier=False):
+	def delete(self, table_name, where_clause, conjunction='and', schema=None, should_quote_identifier=False, export_sql=False):
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		where_clause = self.make_where_clause(where_clause, conjunction=conjunction, should_quote_identifier=should_quote_identifier)
 		if not where_clause:
 			return 0
-		
+
 		sql = f"DELETE FROM {schema}.{table_name} WHERE {where_clause}"
-		
+		if export_sql:
+			return sql
+
 		record = self.do(sql)
 		return record
-	
+
 	"""
 	num_of_inserts, num_of_updates = dbh.insert_update(table_name, key_name, data, schema=None, quote_keys=True, defaults={})
 	num_of_inserts, num_of_updates = dbh.insert_update(
@@ -1233,9 +1241,9 @@ class DBH:
 			data = [data]
 		if not len(data):
 			return 0
-		
+
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
-		
+
 		key_list = common.to_list(data, key_name)
 		where_clause = self.make_where_clause({
 			key_name: key_list
@@ -1244,7 +1252,7 @@ class DBH:
 			return 0
 		sql = f"SELECT {key_name} FROM {schema}.{table_name} WHERE {where_clause}"
 		existing_keys = self.select_column(sql)
-		
+
 		insert_records = []
 		update_records = []
 		for record in data:
@@ -1257,7 +1265,7 @@ class DBH:
 			# Insert
 			else:
 				insert_records.append(record)
-		
+
 		num_of_inserts = 0
 		if insert_records:
 			num_of_inserts = self.insert(table_name, insert_records, schema=schema, quote_keys=quote_keys, defaults=defaults)
@@ -1265,7 +1273,7 @@ class DBH:
 		if update_records:
 			num_of_updates = self.update(table_name, key_name, update_records, schema=schema, quote_keys=quote_keys)
 		return num_of_inserts, num_of_updates
-	
+
 	"""
 	num_of_inserts = dbh.insert_unique(table_name, key_name, data, schema=None, quote_keys=True, defaults={})
 	"""
@@ -1273,7 +1281,7 @@ class DBH:
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
 		num_of_inserts, num_of_updates = self.insert_update(table_name, key_name, data, schema=schema, quote_keys=quote_keys, defaults=defaults, insert_only=True)
 		return num_of_inserts
-	
+
 	"""
 	Inserts missing records and deletes records that no longer exist.
 	num_of_inserts, num_of_deletes = dbh.sync_index_table(
@@ -1291,14 +1299,14 @@ class DBH:
 			data = [data]
 		if not len(data):
 			return 0, 0
-		
+
 		schema, table_name = self.split_schema_from_table_name(table_name, schema=schema)
-		
+
 		# Read existing records
 		primary_ids = common.to_list(data, primary_key)
 		where_clause = self.make_where_clause({ primary_key: primary_ids })
 		existing_records = self.select_as_list_of_hashes(f"SELECT {primary_key}, {secondary_key} FROM {schema}.{table_name} WHERE {where_clause}")
-		
+
 		# Find records to insert
 		insert_records = []
 		for record in data:
@@ -1316,7 +1324,7 @@ class DBH:
 			if not found:
 				insert_records.append(record)
 		num_of_inserts = self.insert(table_name, insert_records, schema=schema, quote_keys=quote_keys, defaults=defaults)
-		
+
 		# Find records to delete
 		num_of_deletes = 0
 		delete_records = []
@@ -1325,7 +1333,7 @@ class DBH:
 			for record in data:
 				if record[primary_key] == existing[primary_key] and record[secondary_key] == existing[secondary_key]:
 					found = True
-			
+
 			if not found:
 				delete_records.append({
 					primary_key: existing[primary_key],
@@ -1335,10 +1343,10 @@ class DBH:
 					primary_key: existing[primary_key],
 					secondary_key: existing[secondary_key]
 				}, schema=schema, should_quote_identifier=quote_keys)
-		
+
 		return num_of_inserts, num_of_deletes
-	
-	
+
+
 	# Admin functions
 	"""
 	schema, table_name = dbh.split_schema_from_table_name(full_table_name, schema=None)
@@ -1354,13 +1362,13 @@ class DBH:
 			schema = parts[0]
 			table_name = parts[1]
 		return schema, table_name
-	
+
 	"""
 	schema_list = dbh.get_schema_list()
 	"""
 	def get_schema_list(self):
 		return self.select_column(f"SELECT schema_name FROM information_schema.schemata ORDER BY schema_name")
-	
+
 	"""
 	schema = dbh.get_table_schema(table_name)
 	"""
@@ -1370,14 +1378,14 @@ class DBH:
 		if len(schemas) == 1:
 			return schemas[0]
 		return None
-	
+
 	"""
 	table_list = dbh.get_table_list(schema)
 	"""
 	def get_table_list(self, schema='public'):
 		qschema = self.quote(schema)
 		return self.select_column(f"SELECT table_name FROM information_schema.tables WHERE table_schema = {qschema} ORDER BY table_name")
-	
+
 	"""
 	boolean = dbh.is_table(table_name, schema=None)
 	"""
@@ -1387,13 +1395,13 @@ class DBH:
 		if answer:
 			return True
 		return False
-	
+
 	"""
 	success = dbh.create_table(table_name, create_sql, indexes=[], schema=None)
 	"""
 	def create_table(self, table_name, sql, indexes=[], schema=None):
 		response = -1
-		if not self.is_table(table_name):
+		if not self.is_table(table_name, schema=schema):
 			if self.dry_run:
 				self.ui.dry_run(sql)
 			else:
@@ -1403,7 +1411,7 @@ class DBH:
 		if response == -1:
 			return True
 		return False
-	
+
 	"""
 	record = dbh.drop_table(table_name, schema=None)
 	"""
@@ -1419,7 +1427,7 @@ class DBH:
 		if response == -1:
 			return True
 		return False
-	
+
 	"""
 	boolean = dbh.is_index(index_name, schema=None)
 	"""
@@ -1433,14 +1441,14 @@ WHERE n.nspname = {} AND c.relname = {}
 		if answer:
 			return True
 		return False
-	
-	
+
+
 	def get_index_name(self, table_name, field_name):
 		schema, table_name = self.split_schema_from_table_name(table_name)
 		field_name = re.sub(r'[^a-zA-Z0-9_]', '_', field_name)
 		field_name = re.sub(r'__+', '_', field_name)
 		return f"{table_name}_{field_name}_idx"
-	
+
 	"""
 	success = dbh.create_index(table_name, field_name, schema=None)
 	"""
@@ -1459,8 +1467,8 @@ WHERE n.nspname = {} AND c.relname = {}
 		if response == -1:
 			return True
 		return False
-	
-	
+
+
 	"""
 	success = dbh.is_valid_role_name(role_name)
 	"""
@@ -1472,7 +1480,7 @@ WHERE n.nspname = {} AND c.relname = {}
 		if re.match(r'[a-z_][a-zA-Z0-9_]*$', role_name):
 			return True
 		return False
-	
+
 	"""
 	record = dbh.create_role(role_name, password)
 	"""
@@ -1484,10 +1492,10 @@ WHERE n.nspname = {} AND c.relname = {}
 		role_oid = cursor.fetchone()
 		if role_oid:
 			return True
-		
+
 		if self.readonly:
 			raise ConnectionError("Attempting CREATE when set to readonly")
-		
+
 		sql = "CREATE ROLE {} WITH LOGIN PASSWORD %s".format(role_name)
 		try:
 			cursor.execute(sql, (password,))
@@ -1495,11 +1503,11 @@ WHERE n.nspname = {} AND c.relname = {}
 			print("Error {}: {}".format(type(err), err))
 			cursor.close()
 			return False
-		
-		self._conn.commit()		
+
+		self._conn.commit()
 		cursor.close()
 		return True
-	
+
 	"""
 	record = dbh.drop_role(role_name)
 	"""
@@ -1511,10 +1519,10 @@ WHERE n.nspname = {} AND c.relname = {}
 		role_oid = cursor.fetchone()
 		if not role_oid:
 			return True
-		
+
 		if self.readonly:
 			raise ConnectionError("Attempting DROP when set to readonly")
-		
+
 		sql = "DROP ROLE {}".format(role_name)
 		try:
 			cursor.execute(sql)
@@ -1522,11 +1530,11 @@ WHERE n.nspname = {} AND c.relname = {}
 			print("Error {}: {}".format(type(err), err))
 			cursor.close()
 			return False
-		
-		self._conn.commit()	
+
+		self._conn.commit()
 		cursor.close()
 		return True
-	
+
 """
 CREATE TYPE ordinal_text AS ENUM('first', 'second', 'third');
 CREATE TABLE test_data_type (

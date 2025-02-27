@@ -67,9 +67,9 @@ class Request:
 		self._dry_run = dry_run
 		self.log_level = log_level
 		self.ui = moses_common.ui.Interface(use_slack_format=True)
-		
+
 		self._event = copy.deepcopy(event)
-		
+
 		if self.log_level >= 7:
 			self.ui.body(f"event: {self._event}")
 		elif self.log_level >= 6:
@@ -81,46 +81,46 @@ class Request:
 				self.ui.body(f"body: {self.body}")
 			if self.cookies:
 				self.ui.body(f"cookies: {self.cookies}")
-	
+
 	@property
 	def log_level(self):
 		return self._log_level
-	
+
 	@log_level.setter
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
-    
+
 	def is_api_gateway(self):
 		if 'use_authentication' in self._event and not self._event['use_authentication']:
 			return False
 		if 'httpMethod' in self._event:
 			return True
 		return False
-	
+
 	@property
 	def headers(self):
 		if 'headers' in self._event:
 			return self._event['headers']
 		return None
-	
+
 	def get_header(self, name):
 		if self.headers:
 			for header, value in self.headers.items():
 				if name.lower() == header.lower():
 					return value
-	
+
 	@property
 	def method(self):
-		if 'httpMethod' in self._event:
+		if self._event.get('httpMethod'):
 			return self._event['httpMethod'].upper()
-		elif 'requestContext' in self._event and 'httpMethod' in self._event['requestContext']:
+		elif 'requestContext' in self._event and self._event['requestContext'].get('httpMethod'):
 			return self._event['requestContext']['httpMethod'].upper()
-		elif 'requestContext' in self._event and 'http' in self._event['requestContext'] and 'method' in self._event['requestContext']['http']:
+		elif 'requestContext' in self._event and 'http' in self._event['requestContext'] and self._event['requestContext']['http'].get('method'):
 			return self._event['requestContext']['http']['method'].upper()
-		elif 'method' in self._event:
+		elif self._event.get('method'):
 			return self._event['method'].upper()
 		return None
-	
+
 	@property
 	def authorization(self):
 		if 'headers' not in self._event or 'Authorization' not in self._event['headers']:
@@ -128,7 +128,7 @@ class Request:
 		auth_parts = re.split(r' ', self._event['headers']['Authorization'], 1)
 		if len(auth_parts) != 2:
 			return None
-		
+
 		scheme = auth_parts[0].lower()
 		if scheme == 'basic':
 			user_pass = base64.b64decode(auth_parts[1])
@@ -146,7 +146,7 @@ class Request:
 				'token': auth_parts[1]
 			}
 		return None
-		
+
 	@property
 	def ip_address(self):
 		ip_address = None
@@ -160,15 +160,15 @@ class Request:
 				addresses_string = self._event['requestContext']['identity']['sourceIp']
 			elif 'requestContext' in self._event and 'http' in self._event['requestContext'] and 'sourceIp' in self._event['requestContext']['http']:
 				addresses_string = self._event['requestContext']['http']['sourceIp']
-			
+
 			if type(addresses_string) is not str or not len(addresses_string):
 				return None
-			
+
 			addresses = re.compile(r"\s*,\s*").split(addresses_string)
 			if addresses[0]:
 				return addresses[0]
 		return None
-	
+
 	@property
 	def host(self):
 		if 'headers' in self._event and 'host' in self._event['headers']:
@@ -176,7 +176,7 @@ class Request:
 		elif 'requestContext' in self._event and 'domainName' in self._event['requestContext']:
 			return self._event['requestContext']['domainName']
 		return None
-		
+
 	@property
 	def path(self):
 		if 'path' in self._event:
@@ -188,23 +188,23 @@ class Request:
 			path_match = r'/{}'.format(stage)
 			return re.sub(path_match, '', self._event['requestContext']['path'])
 		return None
-		
+
 	@property
 	def full_path(self):
 		if 'requestContext' in self._event and 'path' in self._event['requestContext']:
 			return self._event['requestContext']['path']
 		return None
-		
+
 	@property
 	def resource(self):
 		if 'resource' in self._event and self._event['resource'] != None:
 			return str(self._event['resource'])
-	
+
 	def get_param(self, arg):
 		if 'pathParameters' in self._event and self._event['pathParameters']:
 			if arg in self._event['pathParameters']:
 				return self._event['pathParameters'][arg]
-	
+
 	def parse_path(self):
 		path = ''
 		if 'path' in self._event:
@@ -213,10 +213,10 @@ class Request:
 			stage = self._event['requestContext']['stage']
 			path_match = r'/{}/'.format(stage)
 			path = re.sub(path_match, '', self._event['requestContext']['path'])
-		
+
 		path_parts = re.split(r'/', path)
 		return path_parts
-	
+
 	@property
 	def input(self):
 		input = {}
@@ -225,11 +225,11 @@ class Request:
 		if self.body:
 			for key, value in self.body.items():
 				if key in input:
-					input['key'].extend(value)
+					input[key].extend(value)
 				else:
-					input[key] = value
+					input[key] = [value]
 		return input
-	
+
 	@property
 	def query(self):
 		if 'queryStringParameters' in self._event and type(self._event['queryStringParameters']) is dict:
@@ -237,7 +237,7 @@ class Request:
 		if 'query' in self._event and type(self._event['query']) is dict:
 			return copy.deepcopy(self._event['query'])
 		return None
-	
+
 	def process_query(self):
 		query = {}
 		metadata = {
@@ -253,7 +253,7 @@ class Request:
 			query_source = self._event['query']
 		else:
 			return query, metadata
-		
+
 		for key, value_list in query_source.items():
 			if type(value_list) is not list:
 				value_list = [value_list]
@@ -279,7 +279,7 @@ class Request:
 				return common.url_decode(self._event['body'])
 			return common.convert_value(self._event['body'])
 		return None
-	
+
 	@property
 	def cookies(self):
 		if self._event['headers'].get('Cookie'):
@@ -291,7 +291,7 @@ class Request:
 				cookies[key] = new_value
 			return cookies
 		return None
-	
+
 	def get_cookie_string(self,
 		key,
 		value,
@@ -305,64 +305,64 @@ class Request:
 		secure_prefix=False,
 		delete=False
 	):
-		
+
 		if type(value) is dict or type(value) is list:
 			value = common.make_base64(common.make_json(value))
-		
+
 		if host_prefix:
 			key = '__Host-' + key
 		elif secure_prefix:
 			key = '__Secure-' + key
-		
+
 		if delete:
 			cookie = key + '='
 		else:
 			cookie = key + '=' + value
-		
+
 		if domain:
 			cookie += '; domain=' + domain
-		
+
 		if path:
 			cookie += '; path=' + path
-		
+
 		time_format = "%a, %d %b %Y %H:%M:%S %Z"
 		if delete:
 			dt = common.convert_string_to_datetime('1970-01-01T00:00:00Z')
 			cookie += '; expires=' + dt.strftime(time_format)
-		
+
 		elif max_age:
 			dt = common.get_dt_future(days=max_age)
 			cookie += '; expires=' + dt.strftime(time_format)
-		
+
 		elif expires:
 			dt = common.convert_string_to_datetime(expires)
 			cookie += '; expires=' + dt.strftime(time_format)
-		
+
 		if secure:
 			cookie += '; Secure'
-		
+
 		if http_only:
 			cookie += '; HttpOnly'
-		
+
 		return cookie
-	
-	
-	
+
+
+
 	"""
 	new_event = api.generate_event(stage, path, method='GET', query={}, body={})
 	"""
 	def generate_event(self, stage, path, method='GET', query={}, body={}):
 		event = copy.deepcopy(self._event)
-		
+
 		# Headers
 		if 'headers' in event and 'Referer' not in event['headers']:
 			event['headers']['Referer'] = "{}://{}".format(event['headers']['X-Forwarded-Proto'], event['headers']['X-Original-Host'])
 			event['multiValueHeaders']['Referer'] = [ "{}://{}".format(event['headers']['X-Forwarded-Proto'], event['headers']['X-Original-Host']) ]
-		
+
 		# Method
 		event['httpMethod'] = method.upper()
 		event['requestContext']['httpMethod'] = event['httpMethod']
-		
+
 		# Path
 		event['path'] = path
 		path_base = re.sub(r'^/', '', path)
@@ -375,7 +375,7 @@ class Request:
 		event['requestContext']['resourcePath'] = '/{}/{}'.format(path_base, '{proxy+}')
 		event['requestContext']['stage'] = stage
 		event['resource'] = event['requestContext']['resourcePath']
-		
+
 		# Query string
 		event['queryStringParameters'] = {}
 		event['multiValueQueryStringParameters'] = {}
@@ -386,20 +386,20 @@ class Request:
 			else:
 				event['queryStringParameters'][key] = value
 				event['multiValueQueryStringParameters'][key] = [value]
-		
+
 		# Body
 		event['body'] = None
 		if len(body):
 			event['body'] = json.dumps(body)
-		
+
 		return event
-		
-	
+
+
 	"""
 	Legacy Methods
 	"""
-	
-	
+
+
 	def get_post_data(self):
 		"""
 		post_data = api.get_post_data()
@@ -424,7 +424,7 @@ class Request:
 			else:
 				post_data = self._event['body']
 		return post_data
-	
+
 	def get_post(self, arg, type=None):
 		"""
 		input = api.get_post(field_name)
@@ -435,7 +435,7 @@ class Request:
 				if type == 'json':
 					value = json.loads(value)
 				return value
-	
+
 	def get_query(self, arg=None):
 		if 'queryStringParameters' in self._event and type(self._event['queryStringParameters']) is dict:
 			if arg:
@@ -444,7 +444,7 @@ class Request:
 			else:
 				return self._event['queryStringParameters']
 		return None
-	
+
 	def is_dev_api(self):
 		if 'requestContext' in self._event and 'domainPrefix' in self._event['requestContext']:
 			if re.match(r'.*\-dev$', self._event['requestContext']['domainPrefix']):
@@ -453,10 +453,10 @@ class Request:
 				return False
 		else:
 			return True
-	
+
 	def is_prod_api(self):
 		return not self.is_dev_api()
-	
+
 	def format_response(self, output, type='json'):
 		"""
 		output = api.format_response(output, 'json')
@@ -473,14 +473,14 @@ class Request:
 			content_type = "text/plain"
 		else:
 			raise("Invalid type '{}' passed to aws.api_gateway.format_response()".format(type))
-		
+
 		return {
 			'isBase64Encoded': False,
 			'statusCode': 200,
 			'headers': { 'Content-Type': content_type },
 			'body': body
 		}
-	
+
 	def format_error_response(self, error, message = ""):
 		"""
 		output = api.format_error_response(error, message)
@@ -498,7 +498,7 @@ class Request:
 		elif error.lower() == 'gateway timeout': code = 504
 		else:
 			raise("Invalid error '{}' passed to aws.api_gateway.format_error_response()".format(error))
-		
+
 		output = {
 			'isBase64Encoded': False,
 			'statusCode': code,
@@ -508,14 +508,14 @@ class Request:
 		}
 		if not message:
 			message = error.lower().capitalize()
-		
+
 		output['headers']['x-amzn-ErrorType'] = re.sub(r' +', '', error.title())
 		output['body'] = json.dumps({
 			'message': message
 		})
-		
+
 		return output
-	
+
 	def get_pagination_from_query(self):
 		query_string = self.get_query()
 		page_size = None
@@ -554,7 +554,7 @@ class Request:
 		if order_by:
 			pagination['order_by'] = order_by
 		return pagination
-	
+
 	def get_limit_offset(self, page_size=None, page_number=1):
 		if type(page_size) is int or type(page_size) is str:
 			page_size = int(page_size)
@@ -562,20 +562,20 @@ class Request:
 				page_size = 1
 		else:
 			page_size = None
-		
+
 		if type(page_number) is int or type(page_number) is str:
 			page_number = int(page_number)
 			if page_number < 1:
 				page_number = 1
 		else:
 			page_number = 1
-		
+
 		limit = page_size
 		offset = None
 		if page_size:
 			offset = int(page_size * (page_number-1)) + 1
 		return limit, offset
-	
+
 	def get_pagination_links(self, count=None, pagination={}):
 		if count and (type(count) is int or type(count) is str):
 			count = int(count)
@@ -584,7 +584,7 @@ class Request:
 		meta_data = {
 			"count": count
 		}
-		
+
 		if not pagination or type(pagination) is not dict:
 			return meta_data
 		page_size = None
@@ -596,7 +596,7 @@ class Request:
 		# Pagination not needed
 		if count < page_size:
 			return meta_data
-		
+
 		if 'page_number' in pagination and (type(pagination['page_number']) is int or type(pagination['page_number']) is str):
 			page_number = int(pagination['page_number'])
 			if page_number < 1:
@@ -604,7 +604,7 @@ class Request:
 		else:
 			page_number = 1
 		meta_data['page_number'] = page_number
-		
+
 		order_by = ''
 		if 'order_by' in pagination:
 			for element in pagination['order_by']:
@@ -617,15 +617,15 @@ class Request:
 					else:
 						order_by = '&'
 					order_by += "{}%20{}".format(element['field'], order)
-		
+
 		path = self.path
 		path += '?'
-		
+
 		# First page
 		meta_data['pagination_links'] = {
 			"first_page": "{}page_size={}&page_number=1{}".format(path, page_size, order_by)
 		}
-		
+
 		# Last page
 		last_page = int(count / page_size)
 		if count % page_size:
@@ -633,18 +633,18 @@ class Request:
 		meta_data['last_page_number'] = last_page
 		if last_page > 1:
 			meta_data['pagination_links']['last_page'] = "{}page_size={}&page_number={}{}".format(path, page_size, last_page, order_by)
-		
+
 		# Prev page
 		if page_number > 1:
 			prev_page = page_number - 1
 			if prev_page > last_page:
 				prev_page = last_page
 			meta_data['pagination_links']['prev_page'] = "{}page_size={}&page_number={}{}".format(path, page_size, prev_page, order_by)
-		
+
 		# Next page
 		if last_page >= (page_number + 1):
 			meta_data['pagination_links']['next_page'] = "{}page_size={}&page_number={}{}".format(path, page_size, page_number + 1, order_by)
-	
+
 		return meta_data
 
 
@@ -656,25 +656,25 @@ class API:
 	def __init__(self, api_name, log_level=5, dry_run=False):
 		self.dry_run = dry_run
 		self.log_level = log_level
-		
+
 		self.ui = moses_common.ui.Interface()
 		self.client = boto3_client('apigateway', region_name="us-west-2")
-		
+
 		self.name = api_name
 		self._resources = None
 		if self.load():
 			self.exists = True
 		else:
 			self.exists = False
-	
+
 	@property
 	def log_level(self):
 		return self._log_level
-	
+
 	@log_level.setter
 	def log_level(self, value):
 		self._log_level = common.normalize_log_level(value)
-	
+
 	"""
 	api_info = api.load()
 	
@@ -714,19 +714,19 @@ class API:
 				if paginator_field in response:
 					return self.load(response[paginator_field])
 			return False
-	
+
 	@property
 	def id(self):
 		if self.exists or 'id' in self._info:
 			return self._info['id']
 		return None
-	
+
 	@property
 	def resources(self):
 		if not self._resources:
 			self.load_resources()
 		return self._resources
-	
+
 	def load_resources(self, paginator_value=None):
 		paginator_field = 'position'
 		list_field = 'items'
@@ -756,7 +756,7 @@ class API:
 				else:
 					return True
 			return False
-	
+
 	"""
 	parent_path, path_part = api.get_path_parts(path)
 	parent_path, path_part = api.get_path_parts(path, is_proxy=True)
@@ -769,8 +769,8 @@ class API:
 			parent_path = '/'
 		path_part = re.sub(r'.*\/', '', path)
 		return parent_path, path_part
-	
-	
+
+
 	"""
 	resource = api.get_resource(path)
 	
@@ -809,7 +809,7 @@ class API:
 					return resource
 				else:
 					return resource.copy()
-	
+
 	"""
 	success = api.create_resource(path)
 	success = api.create_resource(path, is_proxy=True)
@@ -820,7 +820,7 @@ class API:
 		if not parent_resource:
 			return False
 		parent_id = parent_resource['id']
-		
+
 		if self.dry_run:
 			self.ui.dry_run(f"create_resource('{path}')")
 			if self._resources:
@@ -845,7 +845,7 @@ class API:
 					self._resources.append(response)
 				return True
 			return False
-	
+
 	"""
 	success = api.get_methods(path)
 	success = api.get_methods(path, is_proxy=True)
@@ -857,7 +857,7 @@ class API:
 		if 'resourceMethods' in resource:
 			return resource['resourceMethods']
 		return []
-	
+
 	"""
 	success = api.get_method(path, method)
 	success = api.get_method(path, method, is_proxy=True)
@@ -867,7 +867,7 @@ class API:
 		if method in methods:
 			return methods[method]
 		return None
-	
+
 	"""
 	success = api.set_method(path, method, method_def)
 	success = api.set_method(path, method, method_def, is_proxy=True)
@@ -878,10 +878,10 @@ class API:
 			return False
 		if 'resourceMethods' not in resource:
 			resource['resourceMethods'] = {}
-		
+
 		resource['resourceMethods'][method.upper()] = method_def
 		return True
-	
+
 	"""
 	success = api.put_method(path, method)
 	success = api.put_method(path, method, is_proxy=True)
@@ -891,13 +891,13 @@ class API:
 		if not resource:
 			return False
 		method = method.upper()
-		
+
 		request_parameters = {}
 		if is_proxy:
 			request_parameters = { "method.request.path.proxy": True }
-		
+
 		new_method_def = None
-		
+
 		if self.dry_run:
 			self.ui.dry_run(f"put_method('{path}', '{method}')")
 			return True
@@ -918,7 +918,7 @@ class API:
 				new_method_def = response
 			else:
 				return False
-		
+
 		if not is_proxy:
 			try:
 				response = self.client.put_method_response(
@@ -938,11 +938,11 @@ class API:
 					}
 				else:
 					return False
-		
+
 		cache_key_parameters = []
 		if is_proxy:
 			cache_key_parameters = [ "method.request.path.proxy" ]
-		
+
 		try:
 			response = self.client.put_integration(
 				restApiId = self.id,
@@ -965,7 +965,7 @@ class API:
 				new_method_def['methodIntegration'] = response
 			else:
 				return False
-		
+
 		try:
 			response = self.client.put_integration_response(
 				restApiId = self.id,
@@ -984,8 +984,6 @@ class API:
 				}
 			else:
 				return False
-		
+
 		self.set_method(path, method, new_method_def, is_proxy=is_proxy)
 		return True
-		
-	
