@@ -48,7 +48,7 @@ response_code, response_data = common.get_url(url, {
 	}
 })
 """
-def get_url(url, args={}, debug=False, dry_run=False, log_level=5):
+def get_url(url, args={}, convert=True, debug=False, dry_run=False, log_level=5):
 	if debug:
 		log_level = 7
 	
@@ -109,8 +109,11 @@ def get_url(url, args={}, debug=False, dry_run=False, log_level=5):
 	except:
 		print("Unexpected error:", sys.exc_info()[0])
 		raise
-	else:
+	
+	if convert:
 		return 200, convert_value(response)
+	else:
+		return 200, response
 
 def download_url(url, filepath):
 	# Download and save the image to a file
@@ -430,7 +433,7 @@ def read_file(filepath, delimiter=None, mapping=None, file_checked=False, conver
 
 """
 success = common.write_file(filename, data)
-success = common.write_file(filename, data, format='json')
+success = common.write_file(filename, data, format='json', make_dir=False)
 """
 def write_file(filepath, data, format=None, make_dir=False):
 	text = str(data)

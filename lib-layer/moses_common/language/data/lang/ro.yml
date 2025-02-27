@@ -3,8 +3,8 @@ phonetics:
   AA0: o       # odd       AA D
   AE0: a       # at        AE T
   AH0: e       # hut       HH AH T
-  AH1: o       # hut       HH AH T
-  AO0: aw      # ought     AO T
+  AH1: ă       # hut       HH AH T
+  AO0: o       # ought     AO T
   AW0: au      # cow       K AW
   AY0: ai      # hide      HH AY D
   EH0: e       # Ed        EH D
@@ -29,7 +29,7 @@ phonetics:
   L:   l       # lee       L IY
   M:   m       # me        M IY
   N:   n       # knee      N IY
-  NG:  ng      # ping      P IH NG
+  NG:  n      # ping      P IH NG
   P:   p       # pee       P IY
   R:   r       # read      R IY D
   S:   s       # sea       S IY

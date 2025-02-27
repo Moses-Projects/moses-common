@@ -124,7 +124,10 @@ class TTS(SpeechGen):
 		if not accent.dictionary:
 			print(f"ERROR: Dictionary not found")
 			return None
-		return accent.convert_text_to_phonetic(code, text)
+		phonetics = accent.convert_text_to_phonetic(code, text)
+		phonetics = re.sub(r'\s*\.\.\.+\s*', '. ', phonetics)
+		return phonetics
+		
 
 	
 	

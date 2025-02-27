@@ -162,7 +162,8 @@ class Accent:
 			post = parts.group(3)
 			
 			phonetic, phoneme_string = self.convert_word_to_phonetic(code, bare_word)
-			print(f"{pre}{phoneme_string}{post}")
+			if self.log_level >= 6:
+				print(f"{pre}{phoneme_string}{post}")
 			phonetics.append(f"{pre}{phonetic}{post}")
 		return ' '.join(phonetics)
 	
@@ -193,6 +194,8 @@ class Accent:
 			return word
 		
 		phoneme_string = self.convert_word_to_phonemes(word)
+		if not phoneme_string:
+			return word, ''
 		phonemes = phoneme_string.split(' ')
 # 		print("phonemes {}: {}".format(type(phonemes), phonemes))
 		vowel_count = self.get_vowel_count(phoneme_string)
@@ -213,8 +216,8 @@ class Accent:
 			return None
 		
 		# Remove accent in single vowel words
-		if vowel_count <= 1:
-			phoneme = re.sub(r'[12]$', '0', phoneme)
+# 		if vowel_count <= 1:
+# 			phoneme = re.sub(r'[12]$', '0', phoneme)
 		
 		# As is
 		if phoneme in lang_def['phonetics']:
