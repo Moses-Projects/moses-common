@@ -1327,7 +1327,7 @@ def convert_datetime_to_string(input):
 """
 datetime_object = common.convert_string_to_datetime(datetime_string)
 """
-def convert_string_to_datetime(input):
+def convert_string_to_datetime(input, tz_aware=False):
 	if is_datetime(input):
 		return input
 	input = str(input)
@@ -1342,7 +1342,8 @@ def convert_string_to_datetime(input):
 			datetime_format = date_format + ' ' + time_format
 			try:
 				datetime_obj = datetime.datetime.strptime(input, datetime_format)
-				datetime_obj = datetime_obj.astimezone(tz).replace(tzinfo=None)
+				if not tz_aware:
+					datetime_obj = datetime_obj.astimezone(tz).replace(tzinfo=None)
 				return datetime_obj
 			except ValueError:
 				continue

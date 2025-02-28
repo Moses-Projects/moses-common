@@ -144,7 +144,7 @@ class Collective:
 		print("checking last artists update")
 		
 		record = settings_table.get_item('artists_last_update')
-		dt = common.convert_string_to_datetime(record['value'])
+		dt = common.convert_string_to_datetime(record['value'], tz_aware=True)
 		if self.artists_last_update and self.artists_last_update < dt:
 			return True
 		return False
@@ -164,7 +164,7 @@ class Collective:
 		print("checking last genres update")
 		
 		record = settings_table.get_item('genres_last_update')
-		dt = common.convert_string_to_datetime(record['value'])
+		dt = common.convert_string_to_datetime(record['value'], tz_aware=True)
 		if self.genres_last_update and self.genres_last_update < dt:
 			return True
 		return False
@@ -188,7 +188,7 @@ class Collective:
 		
 		record = settings_table.get_item('images_last_update')
 		print("record {}: {}".format(type(record), record))
-		dt = common.convert_string_to_datetime(record['value'])
+		dt = common.convert_string_to_datetime(record['value'], tz_aware=True)
 		if self.images_last_update and self.images_last_update < dt:
 			return True
 		return False

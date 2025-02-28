@@ -607,6 +607,8 @@ class StableImage(StabilityAI):
 			"seed": data['seed'],
 			"output_format": "png"
 		}
+		if self.name == 'sd3':
+			body["model"] = "sd3.5-medium"
 		
 		print(f"Using {self.label}")
 		response = requests.post(
