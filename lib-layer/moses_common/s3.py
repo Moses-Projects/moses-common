@@ -13,20 +13,11 @@ class Bucket:
 	import moses_common.s3
 	bucket = moses_common.s3.Bucket(bucket_name)
 	"""
-	def __init__(self, bucket_name, log_level=5, dry_run=False):
-		self.log_level = log_level
+	def __init__(self, bucket_name, ui=None, dry_run=False):
 		self.dry_run = dry_run
+		self.ui = ui or moses_common.ui.Interface()
 		self.client = boto3_client('s3', region_name="us-west-2")
 		self.bucket_name = bucket_name
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def name(self):
@@ -39,21 +30,14 @@ class Object:
 	import moses_common.s3
 	file = moses_common.s3.Object(bucket, object_name)
 	"""
-	def __init__(self, bucket, object_name, log_level=5, dry_run=False):
-		self.log_level = log_level
+	def __init__(self, bucket, object_name, ui=None, dry_run=False):
 		self.dry_run = dry_run
+		self.ui = ui or moses_common.ui.Interface()
 		self.bucket = bucket
+		if type(bucket) is str:
+			self.bucket = Bucket(bucket)
 		self.client = self.bucket.client
 		self.object_name = object_name
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	"""
 	response = file.get_file(filepath=None)
@@ -133,20 +117,25 @@ class Object:
 	response = file.upload_content(content)
 	"""
 	def upload_content(self, content):
-		if self.dry_run:
-			self.ui.dry_run(f"s3.upload_fileobj('{self.bucket.name}', '{self.object_name}')")
-			return True
 		if type(content) is str:
-		    response = self.client.put_object(
+			if self.dry_run:
+				self.ui.dry_run(f"s3.put_object('{self.bucket.name}', '{self.object_name}')")
+				return True
+			response = self.client.put_object(
 				Body=content,
 				Bucket=self.bucket.name,
 				Key=self.object_name
 			)
 		else:
+			if self.dry_run:
+				self.ui.dry_run(f"s3.upload_fileobj('{self.bucket.name}', '{self.object_name}')")
+				return True
 			response = self.client.upload_fileobj(
 				io.BytesIO(content),
 				self.bucket.name,
 				self.object_name
 			)
+		if not common.is_success(response):
+			return False
 		return True
 	

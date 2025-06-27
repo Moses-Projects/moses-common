@@ -4,6 +4,8 @@
 # Converted from the Perl SitemasonPl::IO module
 
 import getopt
+import inspect
+import logging
 import re
 import os
 import sys
@@ -19,22 +21,89 @@ class Interface:
 	"""
 	ui = moses_common.ui.Interface()
 	"""
-	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None):
+	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None, log_messages=None, log_level=None):
 
 		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
 
 		self.force_whitespace = common.convert_to_bool(force_whitespace) or False
 
+# 		functions = inspect.stack()
+# 		for function in functions:
+# 			print(f"function: {function.function} {function.filename}")
+		self.script_name = os.path.basename(sys.modules['__main__'].__file__)
+		if common.is_lambda():
+			self.script_name = os.environ['AWS_LAMBDA_FUNCTION_NAME']
 		self.usage_message = usage_message
+		self.logger = None
+		self.log_messages = log_messages
+		if common.is_aws() and common.is_lambda():
+			self.log_messages = False
+		
+		# Set default log_level
+		if not log_level:
+			log_level = 5
+			if 'OPT_EXTRA_VERBOSE' in os.environ:
+				log_level = 7
+			elif 'OPT_VERBOSE' in os.environ:
+				log_level = 6
+			elif 'OPT_LOG_LEVEL' in os.environ:
+				log_level = common.convert_to_int(os.environ['OPT_LOG_LEVEL']) or 5
+		
+		self.log_level = log_level
+		self._colors = self._get_term_color_numbers()
+
+		self.configure_logging()
 		self.params = None
 
-		self._colors = self._get_term_color_numbers()
+		self.progress_label = None
+		self.progress_fraction = 0
+		self.in_progress = False
 
 		self._args = {}
 		self._opts = {}
 
+	@staticmethod
+	def get_log_level_info(value):
+		log_level_map = {
+			"debug": [7, 10],
+			"info": [6, 20],
+			"notice": [5, 25],
+			"warning": [4, 30],
+			"error": [3, 40],
+			"critical": [2, 50],
+			"alert": [1, 60],
+			"emergency": [0, 70]
+		}
+		for name, nums in log_level_map.items():
+			found = False
+			if common.is_int(value) and (value == nums[0] or value == nums[1]):
+				found = True
+			elif type(value) is str and value.lower() == name:
+				found = True
+
+			if found:
+				return {
+					"name": name,
+					"syslog_num": nums[0],
+					"logging_num": nums[1]
+				}
+		return None
+
+	@property
+	def log_level(self):
+		return self._log_level
+
+	@log_level.setter
+	def log_level(self, value):
+		level_info = self.get_log_level_info(value)
+		if self.logger:
+			self.logger.setLevel(level_info['logging_num'])
+		self._log_level = level_info['syslog_num']
+
 	@property
 	def supports_color(self):
+		if common.is_bbedit():
+			return False
 		if os.environ.get('TERM') and os.environ.get('TERM') not in ['dumb', 'tty']:
 			return True
 
@@ -47,6 +116,85 @@ class Interface:
 	def is_aws_lambda(self):
 		if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
 			return True
+
+	def configure_logging(self):
+		if not self.log_messages:
+			return
+		self.logger = logging.getLogger(self.script_name)
+		level_info = self.get_log_level_info(self.log_level)
+		self.logger.setLevel(level_info['logging_num'])
+		self.add_logging_level('NOTICE', logging.DEBUG + 5)
+		self.add_logging_level('ALERT', logging.CRITICAL + 10)
+		self.add_logging_level('EMERGENCY', logging.CRITICAL + 20)
+
+		log_file = re.sub(r'\.py$', '', self.script_name, 0, re.I) + '.log'
+		formatter = logging.Formatter(
+			fmt='%(message)s',
+			datefmt='%Y-%m-%d %H:%M:%S'
+		)
+		file_handler = logging.FileHandler(log_file)
+		file_handler.setFormatter(formatter)
+		if not self.logger.hasHandlers():
+			self.logger.addHandler(file_handler)
+		self.logger.emergency("\n" + common.get_datetime_string())
+# 		print(logging.getLoggerClass().root.handlers[0].baseFilename)
+
+
+	"""
+	From
+	https://stackoverflow.com/questions/2183233/how-to-add-a-custom-loglevel-to-pythons-logging-facility/35804945#35804945
+	"""
+	def add_logging_level(self, level_name, level_num, method_name=None):
+		"""
+		Comprehensively adds a new logging level to the `logging` module and the
+		currently configured logging class.
+
+		`level_name` becomes an attribute of the `logging` module with the value
+		`level_num`. `method_name` becomes a convenience method for both `logging`
+		itself and the class returned by `logging.getLoggerClass()` (usually just
+		`logging.Logger`). If `method_name` is not specified, `level_name.lower()` is
+		used.
+
+		To avoid accidental clobberings of existing attributes, this method will
+		raise an `AttributeError` if the level name is already an attribute of the
+		`logging` module or if the method name is already present
+
+		Example
+		-------
+		>>> add_logging_level('TRACE', logging.DEBUG - 5)
+		>>> logging.getLogger(__name__).set_level("TRACE")
+		>>> logging.getLogger(__name__).trace('that worked')
+		>>> logging.trace('so did this')
+		>>> logging.TRACE
+		5
+
+		"""
+		if not method_name:
+			method_name = level_name.lower()
+
+		if hasattr(logging, level_name):
+		   self.warning('{} already defined in logging module'.format(level_name))
+		   return
+		if hasattr(logging, method_name):
+		   self.warning('{} already defined in logging module'.format(method_name))
+		   return
+		if hasattr(logging.getLoggerClass(), method_name):
+		   self.warning('{} already defined in logger class'.format(method_name))
+		   return
+
+		# This method was inspired by the answers to Stack Overflow post
+		# http://stackoverflow.com/q/2183233/2988730, especially
+		# http://stackoverflow.com/a/13638084/2988730
+		def log_for_level(self, message, *args, **kwargs):
+			if self.isEnabledFor(level_num):
+				self._log(level_num, message, args, **kwargs)
+		def log_to_root(message, *args, **kwargs):
+			logging.log(level_num, message, *args, **kwargs)
+
+		logging.addLevelName(level_num, level_name)
+		setattr(logging, level_name, level_num)
+		setattr(logging.getLoggerClass(), method_name, log_for_level)
+		setattr(logging, method_name, log_to_root)
 
 
 	### Arg handing
@@ -231,6 +379,12 @@ class Interface:
 							self._opts[opt['short']] = a
 						if 'long' in opt:
 							self._opts[opt['long']] = a
+
+						# Set values for reserved options
+						if opt['long'] == 'extra_verbose' and a:
+							self.log_level = 7
+						elif opt['long'] == 'verbose' and a:
+							self.log_level = 6
 
 		if 'options' in params:
 			for param in params['options']:
@@ -461,9 +615,15 @@ class Interface:
 				print(f"{name:14s}: {ds:s}{name:14s}{de:s} {bs:s}{name:14s}{be:s} {fs:s}{name:14s}{fe:s} {ist:s}{name:14s}{ie:s}")
 
 	def print_sample_sections(self):
+		self.debug("This is debug")
 		self.info("This is info")
+		self.notice("This is a notice")
 		self.warning("This is a warning\n  Line 2")
 		self.error("This is an error\n  Line 2")
+		self.critical("This is critical")
+		self.alert("This is an alert")
+		self.emergency("This is an emergency")
+
 		self.title("This is a title")
 		self.header("This is a header")
 		self.header2("This is a header2")
@@ -532,7 +692,7 @@ class Interface:
 # 		$text =~ s/^>/$self->make_quote('silver_bg')/egm;
 		return text
 
-	def make_quote(self, color_name='silver_bg'):
+	def make_quote(self, color_name='gray_bg'):
 		if not re.search(r'_bg$', color_name) or not self.supports_color:
 			return '| '
 		indent = self.format_text(' ', color_name)
@@ -550,113 +710,116 @@ class Interface:
 
 	def body(self, text=None):
 		text = self.process_whitespace(text)
-		text = self.convert_slack_to_ansi(text)
-		if not len(text):
-			return
-		print(text)
+		self.log(text=text, log_level='notice')
 
 	def title(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(f' {text:s} ', ['blue', 'bold', 'inverse']))
+		self.log(text=text, log_level='notice', formatting=['white', 'bold', 'blue_bg'], padding=True)
 
 	def header(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['blue', 'bold', 'underline']))
+		self.log(text=text, log_level='notice', formatting=['blue', 'bold', 'underline'])
 
 	def header2(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['bold', 'underline']))
+		self.log(text=text, log_level='notice', formatting=['bold', 'underline'])
 
 	def success(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['green', 'bold']))
+		self.log(text=text, log_level='notice', formatting=['green', 'bold'])
 
 	def dry_run(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['silver'], quote='silver_bg'))
+		self.log(text=text, log_level='notice', formatting=['silver'], quote='silver_bg', log_quote=True)
 
 	def verbose(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['gray'], quote='gray_bg'))
+		self.debug(text)
+
+	# syslog severity 7
+	def debug(self, text=None):
+		self.log(text=text, log_level='debug', formatting=['silver'])
 
 	# syslog severity 6
 	def info(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['gray'], quote='gray_bg'))
+		self.log(text=text, log_level='info', formatting=['gray'])
+
+	# syslog severity 5
+	def notice(self, text=None):
+		self.log(text=text, log_level='notice')
 
 	# syslog severity 4
 	def warning(self, text=None):
-		if not text:
-			return
-		if type(text) is list and text and type(text[0]) is str:
-			text = "\n".join(text)
-		text = self.convert_slack_to_ansi(text)
-		print(self.format_text(text, ['olive', 'bold'], quote='olive_bg'))
+		self.log(text=text, log_level='warning', formatting=['olive', 'bold'], quote='olive_bg')
 
 	# syslog severity 3
 	def error(self, text=None):
+		self.log(text=text, log_level='error', formatting=['maroon', 'bold'], prefix='ERROR:', quote='maroon_bg')
+
+	# syslog severity 2
+	def critical(self, text=None):
+		self.log(text=text, log_level='critical', formatting=['white', 'bold', 'maroon_bg'], prefix='CRITICAL:', padding=True)
+
+	# syslog severity 1
+	def alert(self, text=None):
+		self.log(text=text, log_level='alert', formatting=['white', 'bold', 'red_bg'], prefix='ALERT:', padding=True)
+
+	# syslog severity 0
+	def emergency(self, text=None):
+		self.log(text=text, log_level='emergency', formatting=['white', 'bold', 'red_bg', 'blink'], prefix='EMERGENCY:', padding=True)
+
+	# general logging
+	def log(self, text=None, log_level='notice', formatting=[], prefix=None, quote=None, padding=False, log_quote=None):
 		if not text:
 			return
+		if prefix:
+			prefix += ' '
+		else:
+			prefix = ''
+		padding_text = ''
+		if padding:
+			padding_text = ' '
+
+		level_info = self.get_log_level_info(log_level)
+
+		if self.log_messages:
+			log_text = text
+			if level_info['syslog_num'] <= 4:
+				log_text = f"[{level_info['name'].upper()}] {text}"
+			if log_quote:
+				log_text = "| " + log_text
+			self.logger.log(level_info['logging_num'], log_text)
+
+		if self.log_level < level_info['syslog_num']:
+			return
+
 		if type(text) is list and text and type(text[0]) is str:
-			print(self.format_text('ERROR:', ['maroon', 'bold'], quote='maroon_bg'))
-			for error in text:
-				print(self.format_text('  ' + error, ['maroon', 'bold'], quote='maroon_bg'))
+			if prefix:
+				print(self.format_text(prefix, formatting, quote=quote))
+			for message in text:
+				print(self.format_text('  ' + message, formatting, quote=quote))
 		else:
 			text = self.convert_slack_to_ansi(text)
-			print(self.format_text(f"ERROR: {text}", ['maroon', 'bold'], quote='maroon_bg'))
+			print(self.format_text(f"{padding_text}{prefix}{text}{padding_text}", formatting, quote=quote))
 
 	def usage(self):
 		if self.usage_message:
-			self.info(self.usage_message)
+			print(self.usage_message)
 			return
 		if 'description' in self.params:
-			self.info(self.params['description'] + "\n")
-		script_name = os.path.basename(sys.modules['__main__'].__file__)
+			print(self.params['description'] + "\n")
 
 		# Description
-		self.info("Usage:")
+		print("Usage:")
 		if common.is_bbedit():
 			if 'options' in self.params:
-				self.info(f"  [<option> [<option> ...]]")
+				print(f"  [<option> [<option> ...]]")
 			if 'args' in self.params:
+				script_line = self.script_name
 				arg_list = []
 				for arg in self.params['args']:
 					if arg.get('required'):
 						script_line += f"\n  <{arg['name']}>"
 					else:
 						script_line += f"\n  [{arg['name']}]"
-				self.info(f"  {script_line}\n")
+				print(f"  {script_line}\n")
 
 		else:
-			script_line = script_name
+			script_line = self.script_name
 			if 'args' in self.params:
 				arg_list = []
 				for arg in self.params['args']:
@@ -664,7 +827,7 @@ class Interface:
 						script_line += f" <{arg['name']}>"
 					else:
 						script_line += f" [{arg['name']}]"
-			self.info(f"  {script_line}\n")
+			print(f"  {script_line}\n")
 
 		# Commands
 		if 'command_help' in self.params:
@@ -674,10 +837,14 @@ class Interface:
 					max_length = len(line['name'])
 			for line in self.params['command_help']:
 				if line['name'] == 'title':
-					self.info(f"  {line['value']}:")
+					print(f"  {line['value']}:")
+				elif line['name'] == 'break':
+					print(" ")
+				elif line.get('value'):
+					print(f"    {line['name']:<{max_length}}  {line['value']}")
 				else:
-					self.info(f"    {line['name']:<{max_length}}  {line['value']}")
-			self.info(" ")
+					print(f"    {line['name']}")
+			print(" ")
 
 		# Args
 		if 'args' in self.params:
@@ -691,7 +858,7 @@ class Interface:
 					else:
 						line['help'] = line['label']
 			if max_length > 0:
-				self.info("  Args (* required):")
+				print("  Args (* required):")
 				max_length += 2
 				for line in self.params['args']:
 					if line.get('required'):
@@ -702,8 +869,8 @@ class Interface:
 					if 'required' in line and line['required']:
 						required = '*'
 					if line.get('help'):
-						self.info(f"  {required} {name:<{max_length}}  {line['help']}")
-				self.info(" ")
+						print(f"  {required} {name:<{max_length}}  {line['help']}")
+				print(" ")
 
 		# Options
 		if 'options' in self.params:
@@ -769,22 +936,22 @@ class Interface:
 						"value": value
 					})
 			if output:
-				self.info("  Options:")
+				print("  Options:")
 				for line in output:
 					if line.get('type') == 'break':
-						self.info(" ")
+						print(" ")
 					else:
-						self.info(f"    {line['name']:<{max_length}}  {line['value']}")
-				self.info(" ")
-				self.info("  Config:")
+						print(f"    {line['name']:<{max_length}}  {line['value']}")
+				print(" ")
+				print("  Config:")
 				if common.is_bbedit():
-					self.info(f"    View: 'config'")
-					self.info(f"    Save: View config, change values, highlight 'config' with changes, re-run filter.")
+					print(f"    View: 'config'")
+					print(f"    Save: View config, change values, highlight 'config' with changes, re-run filter.")
 				else:
-					self.info(f"    View: `{script_name} config`")
-					self.info(f"    Save:")
-					self.info(f"      `{script_name} config <option name>:<option value> [<option name>:<option value>]`")
-			self.info(" ")
+					print(f"    View: `{self.script_name} config`")
+					print(f"    Save:")
+					print(f"      `{self.script_name} config <option name>:<option value> [<option name>:<option value>]`")
+			print(" ")
 
 
 	def pretty(self, input, label=None, colorize=True):
@@ -801,6 +968,58 @@ class Interface:
 				input = re.sub(r': (true|false|null)', lambda m: ': ' + self.format_text(m.group(1), 'magenta'), str(input))
 		print(input)
 
+	def progress(self, fraction, label=None):
+		if not self.is_person:
+			return
+		fraction = common.convert_to_float(fraction)
+		# end
+		if type(fraction) is str and fraction == 'end':
+# 			label_length = 0
+# 			progress_length = 102
+# 			if self.supports_color:
+# 				progress_length += len(self.bold(''))
+# 			if self.progress_label:
+# 				label_length = length(self.progress_label) + 1
+# 			print("\r" . ' ' x (label_length + progress_length) . "\r"
+			print('')
+			self.progress_fraction = 0
+			self.progress_label = None
+			self.in_progress = False
+			return
+		
+		if fraction > 1:
+			fraction = 1
+		fraction = int(fraction * 100)
+		
+		if self.log_level >= 7:
+			frac = fraction or '0'
+			progress = self.progress_fraction or '0'
+			self.debug(f"{fraction} - {progress}")
+		
+		# reset
+		if self.in_progress and (fraction < self.progress_fraction):
+			self.debug("reset")
+			print('')
+			self.progress_fraction = 0
+			self.progress_label = None
+		
+		# update
+# 		progress = self.progress or 0
+# 		if (fraction - progress) >= 0:
+# 			if debug:
+# 				print("update")
+# 			remaining = 100 - fraction
+# 			cursor_move = remaining + 1
+# 			if !remaining:
+# 				cursor_move--
+# 			if label:
+# 				print self.make_color("\rlabel |" . '-'xfraction . ' 'xremaining . '|' . "\b"xcursor_move, 'bold')
+# 			else:
+# 				print self.make_color("\r|" . '-'xfraction . ' 'xremaining . '|' . "\b"xcursor_move, 'bold')
+# 			self[progress_label] = label
+# 			self[progress] = fraction
+
+		
 
 	def format_hash_list(self, records, fields=None):
 		records = common.to_list(records)
@@ -886,7 +1105,6 @@ class Interface:
 				else:
 					output += f"{field:<{length}}"
 			output += divider
-			output = self.format_text(output, 'underline')
 			output += "\n"
 
 		# Add records

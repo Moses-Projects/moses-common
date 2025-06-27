@@ -11,25 +11,16 @@ class Email:
 	"""
 	import moses_common.ses
 	email = moses_common.ses.Email(from_address_arn)
-	email = moses_common.ses.Email(from_address_arn, log_level=5, dry_run=False)
+	email = moses_common.ses.Email(from_address_arn, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, from_address_arn, log_level=5, dry_run=False):
-		self.log_level = log_level
+	def __init__(self, from_address_arn, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
+		self.ui = ui or moses_common.ui.Interface()
 	
 		self.client = boto3_client('sesv2', region_name="us-west-2")
 		self.from_address_arn = from_address_arn
 		self.from_address = re.sub(r'^.*/', '', from_address_arn)
 		
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	"""
 	message_id = email.send({
@@ -95,17 +86,16 @@ class Email:
 		if 'tags' in args:
 			tags_list = common.convert_tags(args['tags'], 'upper')
 		
-		if self.log_level >= 7:
-			if to_addresses:
-				self.ui.body(f"To: {to_addresses}")
-			if cc_addresses:
-				self.ui.body(f"CC: {cc_addresses}")
-			if bcc_addresses:
-				self.ui.body(f"BCC: {bcc_addresses}")
-			if reply_to_addresses:
-				self.ui.body(f"Reply-to: {reply_to_addresses}")
-			self.ui.body(f"Subject: {subject}")
-			self.ui.body(f"Body: {body}")
+		if to_addresses:
+			self.ui.debug(f"To: {to_addresses}")
+		if cc_addresses:
+			self.ui.debug(f"CC: {cc_addresses}")
+		if bcc_addresses:
+			self.ui.debug(f"BCC: {bcc_addresses}")
+		if reply_to_addresses:
+			self.ui.debug(f"Reply-to: {reply_to_addresses}")
+		self.ui.debug(f"Subject: {subject}")
+		self.ui.debug(f"Body: {body}")
 		
 		if self.dry_run:
 			self.ui.dry_run(f"ses.send()")

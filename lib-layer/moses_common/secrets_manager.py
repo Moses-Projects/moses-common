@@ -12,20 +12,12 @@ class Secrets:
 	"""
 	import moses_common.secrets_manager
 	secrets = moses_common.secrets_manager.Secrets()
+	secrets = moses_common.secrets_manager.Secrets(ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, log_level=5, dry_run=False):
+	def __init__(self, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
-		self.ui = moses_common.ui.Interface()
+		self.ui = ui or moses_common.ui.Interface()
 		self.client = boto3_client('secretsmanager', region_name="us-west-2")
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	"""
 	secret = secrets.get(secret_name)
@@ -123,11 +115,11 @@ class Secret:
 	"""
 	import moses_common.secrets_manager
 	secret = moses_common.secrets_manager.Secret(secret_name)
+	secret = moses_common.secrets_manager.Secret(secret_name, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, secret_name, log_level=5, dry_run=False):
+	def __init__(self, secret_name, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
-		self.ui = moses_common.ui.Interface()
+		self.ui = ui or moses_common.ui.Interface()
 		self.client = boto3_client('secretsmanager', region_name="us-west-2")
 		self.name = secret_name
 		self.info = self.load()
@@ -135,14 +127,6 @@ class Secret:
 			self.exists = True
 		else:
 			self.exists = False
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	"""
 	secret_info = secret.load()
@@ -226,13 +210,17 @@ class Secret:
 		
 	
 	"""
-	response = secret.create(args)
+	response = secret.create({
+		"description": "string",
+		"value": {},
+		"tags": {}
+	})
 	"""
 	def create(self, args):
 		if not args or type(args) is not dict:
 			raise AttributeError("Received invalid args.")
 		
-		secret_string = json.dumps(args['value'])
+		secret_string = common.make_json(args['value'])
 		
 		tags_list = []
 		if 'tags' in args:

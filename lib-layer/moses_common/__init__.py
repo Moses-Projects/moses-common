@@ -6,6 +6,7 @@ import collections.abc
 import csv
 import datetime
 import decimal
+from email.utils import parseaddr
 import gzip
 import io
 import json
@@ -326,7 +327,7 @@ yaml_string = common.make_yaml(python_object)
 """
 def make_yaml(python_object, pretty_print=False):
 	python_object = convert_datetime_to_string(python_object)
-	return yaml.dump(python_object)
+	return '---\n' + yaml.dump(python_object)
 
 
 """
@@ -443,7 +444,7 @@ def write_file(filepath, data, format=None, make_dir=False):
 		elif format == 'xml' or re.search(r'\.xml$', filepath):
 			text = make_xml(data)
 		elif format == 'yaml' or re.search(r'\.ya?ml$', filepath):
-			text = '---\n' + make_yaml(data)
+			text = make_yaml(data)
 		else:
 			return False
 	filepath = os.path.expanduser(filepath)
@@ -519,8 +520,8 @@ def save_config(data, filename=None):
 
 """
 records = common.read_csv(filepath)
-records = common.read_csv(filepath, delimiter='|')
-records = common.read_csv(filepath, delimiter='|', add_row_number_field="item_num", mapping=csv_mapping)
+records = common.read_csv(filepath, delimiter=',')
+records = common.read_csv(filepath, delimiter=',', add_row_number_field="item_num", mapping=csv_mapping)
 """
 def read_csv(filepath, delimiter=',', mapping=None, add_row_number_field=None):
 	filepath = os.path.expanduser(filepath)
@@ -707,8 +708,11 @@ def write_csv(filepath, data, fields=None, include_header=True, make_dir=False):
 """
 environment = common.get_environment()
 """
-def get_environment():
-	if os.environ.get('ENVIRONMENT') in ['prod', 'production', 'main'] or os.environ.get('X-ENVIRONMENT') in ['prod', 'production', 'main']:
+def get_environment(env_input=None):
+	if env_input:
+		if env_input in ['prod', 'production', 'main']:
+			return 'production'
+	elif os.environ.get('ENVIRONMENT') in ['prod', 'production', 'main'] or os.environ.get('X-ENVIRONMENT') in ['prod', 'production', 'main']:
 		return 'production'
 	return 'dev'
 
@@ -725,8 +729,8 @@ def get_function_stage():
 """
 env_abbr = common.get_env_abbr()
 """
-def get_env_abbr():
-	environment = get_environment()
+def get_env_abbr(env_input=None):
+	environment = get_environment(env_input)
 	if environment == 'production':
 		return 'prod'
 	return 'dev'
@@ -788,14 +792,17 @@ def set_basic_args(event):
 	limit = None
 	# From direct CLI
 	if 'limit' in event:
-		limit = convert_to_int(event['limit']) or None
+		event['limit'] = convert_to_int(event['limit']) or None
+		limit = event['limit']
 	# From CLI invoke
 	elif 'OPT_LIMIT' in os.environ:
-		limit = convert_to_int(os.environ['OPT_LIMIT']) or None
+		event['limit'] = convert_to_int(os.environ['OPT_LIMIT']) or None
+		limit = event['limit']
 	elif 'headers' in event:
 		for header, value in event['headers'].items():
 			if header.upper() == 'X-LIMIT':
-				limit = convert_to_int(value) or None
+				event['limit'] = convert_to_int(value) or None
+				limit = event['limit']
 				break
 
 	if log_level >= 7:
@@ -805,7 +812,7 @@ def set_basic_args(event):
 			print("Dry run, ", end='')
 		print(f"Log level ({log_level})", end='')
 		if limit:
-			print(", Limit ({limit})", end='')
+			print(f", Limit ({limit})", end='')
 		print('')
 
 	return dry_run, log_level, limit
@@ -823,6 +830,7 @@ def generate_uuid():
 
 """
 normalized_text = common.normalize(text)
+normalized_text = common.normalize(text, strip_single_chars=True)
 """
 def normalize(text, strip_single_chars=True, delimiter=' '):
 	if type(text) is not str:
@@ -1011,12 +1019,22 @@ def match_capitalization(original, word):
 	else:
 		return word.lower()
 
-def title_capitalize(text):
+def title_capitalize(text, exceptions=None):
 	new_text = text.title()
 	# Lowercase word exceptions
 	new_text = re.sub(r'\b(a|an|and|as|at|but|by|for|in|nor|of|off|on|or|out|per|so|the|to|up|via|yet)\b', lambda m: f"{m.group(1).lower()}", new_text, 0, re.IGNORECASE)
+	# Capitalize acronyms
+	new_text = re.sub(r'\b([bcdfghjklmnpqrstvwxyz]+)\b', lambda m: f"{m.group(1).upper()}", new_text, 0, re.IGNORECASE)
+	# Capitalize roman numerals
+	new_text = re.sub(r'\b(M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3}))\b', lambda m: f"{m.group(1).upper()}", new_text, 0, re.IGNORECASE)
+	# Lowercase contractions
+	new_text = re.sub(r"(?<=\w)'(d|m|s|t|ll|re|ve)\b", lambda m: f"'{m.group(1).lower()}", new_text, 0, re.IGNORECASE)
 	# Capitalize first word
 	new_text = new_text[0].upper() + new_text[1:]
+	# Handle exceptions
+	if exceptions and type(exceptions) is list:
+		for exception in exceptions:
+			new_text = re.sub(r'\b({})\b'.format(exception), exception, new_text, 0, re.IGNORECASE)
 	return new_text
 
 """
@@ -1083,7 +1101,7 @@ def truncate(text, limit, type='word', include_ellipsis=True, remove_newlines=Fa
 
 def round_half_up(n, decimals=0):
 	multiplier = 10**decimals
-	return math.floor(n * multiplier + 0.5) / multiplier
+	return math.floor(convert_to_float(n) * multiplier + 0.5) / multiplier
 
 
 ## Hash handling
@@ -1294,6 +1312,14 @@ def is_date(input):
 	return False
 
 """
+boolean = common.is_email(input)
+"""
+def is_email(input):
+	if type(input) is not str:
+		return False
+	return '@' in parseaddr(input)[1]
+
+"""
 Checks for a datetime time object.
 boolean = common.is_time(input)
 """
@@ -1415,7 +1441,7 @@ def is_int(input):
 		return True
 	if type(input) is float:
 		input = str(input)
-	if type(input) is str and re.match(r'-?\d+(\.0*)?', input):
+	if type(input) is str and re.match(r'-?\d+(\.0*)?$', input):
 		return True
 	return False
 
@@ -1452,7 +1478,7 @@ def is_float(input):
 		return True
 	if type(input) is int:
 		return True
-	if type(input) is str and re.match(r'-?\d+(\.\d*)?', input):
+	if type(input) is str and re.match(r'-?\d+(\.\d*)?$', input):
 		return True
 	return False
 
@@ -1476,6 +1502,8 @@ def convert_to_float(input):
 			return 0.0
 		if re.match(r'-?\d+(\.\d*)?', input):
 			return float(input)
+	if isinstance(input, decimal.Decimal):
+		return float(input)
 	return None
 
 """
@@ -1510,6 +1538,19 @@ def convert_to_str(input):
 	if input is None:
 		return ''
 	return str(input)
+
+"""
+boolean = common.is_url(input)
+"""
+def is_url(input):
+	if type(input) is not str:
+		return False
+	try:
+		result = urllib.parse.urlparse(input)
+		return all([result.scheme, result.netloc])
+	except ValueError:
+		return False
+	return False
 
 """
 boolean = common.is_uuid(input)
@@ -1643,12 +1684,15 @@ output, errors = common.check_input(
 Field types:
 	str
 	int
+	alphanumeric
 	boolean
 	dict
+	email
 	list
 	datetime
 	date
 	time
+	url
 	uuid
 	doc_id
 
@@ -1740,6 +1784,18 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			if convert_string_to_time(body[key]) is None:
 				errors.append("'{}' must be a time".format(key))
 				continue
+		elif ftype == "alphanumeric":
+			if type(body[key]) is not str or type(body[key]) is not int and not re.match(r'\w+$', str(body[key])):
+				errors.append("'{}' must only be alphanumeric characters or underscores".format(key))
+				continue
+		elif ftype == "email":
+			if not is_email(body[key]):
+				errors.append("'{}' must be an email address".format(key))
+				continue
+		elif ftype == "url":
+			if not is_url(body[key]):
+				errors.append("'{}' must be a url".format(key))
+				continue
 		elif ftype == "uuid":
 			if not is_uuid(body[key]):
 				errors.append("'{}' must be a uuid".format(key))
@@ -1827,31 +1883,6 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 	return output, errors
 
 
-## Logging
-
-def normalize_log_level(value):
-	if is_int(value) and value >= 0 and value <= 7:
-		return convert_to_int(value)
-	elif type(value) is str:
-		if re.match(r'emerg'):
-			return 0
-		elif re.match(r'alert'):
-			return 1
-		elif re.match(r'crit'):
-			return 2
-		elif re.match(r'err'):
-			return 3
-		elif re.match(r'warning'):
-			return 4
-		elif re.match(r'notice'):
-			return 5
-		elif re.match(r'info'):
-			return 6
-		elif re.match(r'debug'):
-			return 7
-	return 0
-
-
 # Serverless functions
 
 # Invoked using Lambda
@@ -1923,7 +1954,7 @@ def convert_tags(tags_dict, case='lower'):
 	return tags_list
 
 """
-output_list = common.convert_dict_to_list(input_dict)
+output_list = common.convert_dict_to_list(input_dict, case='lower')
 
 'upper' uses uppercase labels ('Key', 'Value') required by ELBv2 and others
 'lower' uses lowercase labels ('key', 'value') required by ECS and others

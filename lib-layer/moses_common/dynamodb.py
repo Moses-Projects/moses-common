@@ -18,14 +18,27 @@ def is_valid_name(name):
 		return False
 	return True
 
+"""
+Permissions needed:
+	DescribeTable
+	GetItem
+	Query
+	Scan
+	DeleteItem
+	PutItem
+	UpdateItem
+"""
+
+
 class Table:
 	"""
 	import moses_common.dynamodb
 	table = moses_common.dynamodb.Table(table_name)
+	table = moses_common.dynamodb.Table(table_name, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, table_name, log_level=5, dry_run=False):
+	def __init__(self, table_name, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
+		self.ui = ui or moses_common.ui.Interface()
 		
 		if not is_valid_name(table_name):
 			raise AttributeError("Invalid table name")
@@ -38,7 +51,6 @@ class Table:
 			self.exists = True
 		else:
 			self.exists = False
-		self.ui = moses_common.ui.Interface()
 		
 	'''
 	{
@@ -74,7 +86,7 @@ class Table:
 				self.attributes = {}
 				for attribute_info in response['Table']['AttributeDefinitions']:
 					if 'AttributeName' in attribute_info:
-						self.attributes[attribute_info['AttributeName']] = Attribute(self, attribute_info, log_level=self.log_level, dry_run=self.dry_run)
+						self.attributes[attribute_info['AttributeName']] = Attribute(self, attribute_info, ui=self.ui, dry_run=self.dry_run)
 				if 'KeySchema' in response['Table'] and type(response['Table']['KeySchema']) is list:
 					for i in range(len(response['Table']['KeySchema'])):
 						key_info = response['Table']['KeySchema'][i]
@@ -88,18 +100,10 @@ class Table:
 			if 'GlobalSecondaryIndexes' in response['Table'] and type(response['Table']['GlobalSecondaryIndexes']) is list:
 				self._indexes = {}
 				for index_info in response['Table']['GlobalSecondaryIndexes']:
-					index = Index(self, index_info, log_level=self.log_level, dry_run=self.dry_run)
+					index = Index(self, index_info, ui=self.ui, dry_run=self.dry_run)
 					self._indexes[index.name] = index
 			return True
 		return False
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def arn(self):
@@ -251,18 +255,15 @@ class Table:
 				Key = key_object
 			)
 		except ClientError as e:
-			if self.log_level >= 7:
-				print("error:", e)
+			self.ui.debug(f"error: {e}")
 # 			raise ConnectionError("Failed to get item from DynamodDB " + self.name)
 			pass
 		else:
 			if common.is_success(response) and 'Item' in response:
 				results = self.convert_from_item(response['Item'])
-				if self.log_level >= 7:
-					print("get_item: {}".format(len(results)))
+				self.ui.debug("get_item: {}".format(len(results)))
 				return results
-			elif self.log_level >= 7:
-				print("get_item response:", response)
+			self.ui.debug(f"get_item response: {response}")
 	
 	"""
 	max_id = table.get_max_range_value(key_value)
@@ -287,13 +288,11 @@ class Table:
 				Limit = 1
 			)
 		except ClientError as e:
-			if self.log_level >= 7:
-				print("error:", e)
+			self.ui.debug(f"error: {e}")
 # 			raise ConnectionError("Failed to get item from DynamodDB " + self.name)
 			pass
 		else:
-			if self.log_level >= 7:
-				print("get_max_range_value:", response)
+			self.ui.debug(f"get_max_range_value: {response}")
 			if common.is_success(response) and 'Items' in response:
 				records = self.convert_from_item(response['Items'])
 				if len(records) and records[0] and self.sort_key.name in records[0]:
@@ -443,8 +442,7 @@ class Table:
 			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
-			if self.log_level >= 7:
-				print("query_count:", response)
+			self.ui.debug(f"query_count: {response}")
 			if common.is_success(response) and 'Count' in response:
 				return response['Count']
 				
@@ -478,9 +476,8 @@ class Table:
 			elif limit:
 				limit += offset
 		
-		if self.log_level >= 7:
-			print("args {}: {}".format(type(args), args))
-			print("self.sort_key.name {}: {}".format(type(self.sort_key.name), self.sort_key.name))
+		self.ui.debug("args {}: {}".format(type(args), args))
+		self.ui.debug("self.sort_key.name {}: {}".format(type(self.sort_key.name), self.sort_key.name))
 		sort_forward = True
 		if 'order_by' in args and type(args['order_by']) is list:
 			for element in args['order_by']:
@@ -517,25 +514,21 @@ class Table:
 				
 				# If no offset, return all records
 				if not offset:
-					if self.log_level >= 7:
-						print(f"query no offset: {count}")
+					self.ui.debug(f"query no offset: {count}")
 					return records, count
 				
 				# If offset is too large, return 0 records
 				if offset >= len(records):
-					if self.log_level >= 7:
-						print(f"query big offset: {count}")
+					self.ui.debug(f"query big offset: {count}")
 					return [], count
 				
 				# Return subset of records
 				offset_records = []
 				for i in range(offset, len(records)):
 					offset_records.append(records[i])
-				if self.log_level >= 7:
-					print(f"query with offset: {count}")
+				self.ui.debug(f"query with offset: {count}")
 				return offset_records, count
-			elif self.log_level >= 7:
-				print("query:", response)
+			self.ui.debug(f"query: {response}")
 				
 	
 	"""
@@ -573,8 +566,7 @@ class Table:
 			print("error:", e)
 			raise ConnectionError("Failed to scan DynamodDB", self.name)
 		
-		if self.log_level >= 7:
-			print("get_keys:", response)
+		self.ui.debug(f"get_keys: {response}")
 		if not common.is_success(response) or 'Items' not in response:
 			return None
 		
@@ -634,8 +626,7 @@ class Table:
 			raise ConnectionError("Failed to scan DynamodDB", self.name)
 		
 		if not common.is_success(response) or 'Items' not in response:
-			if self.log_level >= 7:
-				print(f"scan {self.name}: no response")
+			self.ui.debug(f"scan {self.name}: no response")
 			return None
 		
 		items = response['Items']
@@ -656,8 +647,7 @@ class Table:
 					)
 				items.extend(response['Items'])
 		results = self.convert_from_item(items)
-		if self.log_level >= 7:
-			print("scan {}: {}".format(self.name, len(results)))
+		self.ui.debug("scan {}: {}".format(self.name, len(results)))
 		return results
 	
 	
@@ -685,11 +675,10 @@ class Table:
 		update_expression, attribute_names, attribute_values = self.get_update_expression(item, remove_keys)
 		if update_expression and type(update_expression) == type(True):
 			return True
-		if self.log_level >= 7:
-			print("key_object {}: {}".format(type(key_object), key_object))
-			print("update_expression {}: {}".format(type(update_expression), update_expression))
-			print("attribute_names {}: {}".format(type(attribute_names), attribute_names))
-			print("attribute_values {}: {}".format(type(attribute_values), attribute_values))
+		self.ui.debug("key_object {}: {}".format(type(key_object), key_object))
+		self.ui.debug("update_expression {}: {}".format(type(update_expression), update_expression))
+		self.ui.debug("attribute_names {}: {}".format(type(attribute_names), attribute_names))
+		self.ui.debug("attribute_values {}: {}".format(type(attribute_values), attribute_values))
 		
 		if self.dry_run:
 			self.ui.dry_run("Update item: {}".format(item))
@@ -705,12 +694,10 @@ class Table:
 				ExpressionAttributeValues = attribute_values
 			)
 		except ClientError as e:
-			if self.log_level >= 7:
-				print("error:", e)
+			self.ui.debug(f"error: {e}")
 			raise ConnectionError("Failed to update DynamodDB", self.name)
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
+			self.ui.debug(f"response: {response}")
 			if common.is_success(response):
 				return True
 		return False
@@ -732,12 +719,10 @@ class Table:
 				Item = self.convert_to_item(item)
 			)
 		except ClientError as e:
-			if self.log_level >= 7:
-				print("error:", e)
+			self.ui.debug(f"error: {e}")
 			raise ConnectionError("Failed to put item DynamodDB", self.name)
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
+			self.ui.debug(f"response: {response}")
 			if common.is_success(response):
 				return True
 		return False
@@ -766,12 +751,10 @@ class Table:
 				Key = key_hash
 			)
 		except ClientError as e:
-			if self.log_level >= 7:
-				print("error:", e)
+			self.ui.debug(f"error: {e}")
 			raise ConnectionError("Failed to delete item", self.name)
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
+			self.ui.debug(f"response: {response}")
 			if common.is_success(response):
 				return True
 		return False
@@ -782,10 +765,11 @@ class Table:
 class Index:
 	"""
 	index = moses_common.dynamodb.Index(table, args)
+	index = moses_common.dynamodb.Index(table, args, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, table, args, log_level=5, dry_run=False):
+	def __init__(self, table, args, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
+		self.ui = ui or moses_common.ui.Interface()
 		
 		if not args or type(args) is not dict:
 			raise AttributeError("Invalid index args")
@@ -800,7 +784,6 @@ class Index:
 			self.exists = True
 		else:
 			self.exists = False
-		self.ui = moses_common.ui.Interface()
 	
 	'''
 	{
@@ -834,14 +817,6 @@ class Index:
 						self.sort_key = self.table.attributes[key_info['AttributeName']]
 			return True
 		return False
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def arn(self):
@@ -903,8 +878,7 @@ class Index:
 			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
+			self.ui.debug(f"response: {response}")
 			if common.is_success(response) and 'Count' in response:
 				return response['Count']
 				
@@ -957,8 +931,7 @@ class Index:
 			raise ConnectionError("Failed to query table '{}'".format(self.name))
 		
 		else:
-			if self.log_level >= 7:
-				print("response:", response)
+			self.ui.debug(f"response: {response}")
 			if common.is_success(response) and 'Items' in response:
 				records = self.table.convert_from_item(response['Items'])
 				
@@ -987,10 +960,11 @@ class Index:
 class Attribute:
 	"""
 	attribute = moses_common.dynamodb.Attribute(table, args)
+	attribute = moses_common.dynamodb.Attribute(table, args, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, table, args, log_level=5, dry_run=False):
+	def __init__(self, table, args, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
+		self.ui = ui or moses_common.ui.Interface()
 		
 		if not args or type(args) is not dict:
 			raise AttributeError("Invalid attribute args")
@@ -999,7 +973,6 @@ class Attribute:
 		self.name = args['AttributeName']
 		self.info = args
 		self.exists = True
-		self.ui = moses_common.ui.Interface()
 	
 	'''
 	{
@@ -1007,14 +980,6 @@ class Attribute:
 		"AttributeType": "S"
 	}
 	'''
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	@property
 	def type(self):

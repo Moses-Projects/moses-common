@@ -62,33 +62,23 @@ import moses_common.api_gateway
 class Request:
 	"""
 	api = moses_common.api_gateway.Request()
+	api = moses_common.api_gateway.Request(ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, event={}, log_level=5, dry_run=False):
+	def __init__(self, event={}, ui=None, dry_run=False):
 		self._dry_run = dry_run
-		self.log_level = log_level
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
+		self.ui = ui or moses_common.ui.Interface()
 
 		self._event = copy.deepcopy(event)
 
-		if self.log_level >= 7:
-			self.ui.body(f"event: {self._event}")
-		elif self.log_level >= 6:
-			self.ui.body(f"path: *{self.path}*")
-			self.ui.body(f"method: *{self.method}*")
-			if self.method == 'GET':
-				self.ui.body(f"query: {self.query}")
-			else:
-				self.ui.body(f"body: {self.body}")
-			if self.cookies:
-				self.ui.body(f"cookies: {self.cookies}")
-
-	@property
-	def log_level(self):
-		return self._log_level
-
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
+		self.ui.debug(f"event: {self._event}")
+		self.ui.info(f"path: *{self.path}*")
+		self.ui.info(f"method: *{self.method}*")
+		if self.method == 'GET':
+			self.ui.info(f"query: {self.query}")
+		else:
+			self.ui.info(f"body: {self.body}")
+		if self.cookies:
+			self.ui.info(f"cookies: {self.cookies}")
 
 	def is_api_gateway(self):
 		if 'use_authentication' in self._event and not self._event['use_authentication']:
@@ -651,13 +641,12 @@ class Request:
 class API:
 	"""
 	import moses_common.api_gateway
-	api = moses_common.api_gateway.API(api_name, log_level=log_level, dry_run=dry_run)
+	api = moses_common.api_gateway.API(api_name, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, api_name, log_level=5, dry_run=False):
+	def __init__(self, api_name, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
 
-		self.ui = moses_common.ui.Interface()
+		self.ui = ui or moses_common.ui.Interface()
 		self.client = boto3_client('apigateway', region_name="us-west-2")
 
 		self.name = api_name
@@ -666,14 +655,6 @@ class API:
 			self.exists = True
 		else:
 			self.exists = False
-
-	@property
-	def log_level(self):
-		return self._log_level
-
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 
 	"""
 	api_info = api.load()

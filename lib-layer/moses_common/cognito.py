@@ -8,17 +8,16 @@ class User:
 	"""
 	import moses_common.cognito
 
-	user = moses_common.cognito.User(app, log_level=log_level, dry_run=dry_run)
+	user = moses_common.cognito.User(app, ui=ui, dry_run=dry_run)
 	user = moses_common.cognito.User({
 		"app_name": app_name,
 		"auth_hostname": auth_hostname,
 		"client_id": client_id
-	}, log_level=log_level, dry_run=dry_run)
+	}, ui=ui, dry_run=dry_run)
 	"""
-	def __init__(self, app, log_level=5, dry_run=False):
+	def __init__(self, app, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.log_level = log_level
-		self.ui = moses_common.ui.Interface()
+		self.ui = ui or moses_common.ui.Interface()
 
 		self._app = app
 		self.token_url = None
@@ -32,12 +31,8 @@ class User:
 
 
 	@property
-	def log_level(self):
-		return self._log_level
-
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
+	def app(self):
+		return self._app
 
 	@property
 	def client_id(self):
@@ -132,7 +127,7 @@ class User:
 				"Content-Type": "application/x-www-form-urlencoded"
 			},
 			"data": data
-		}, log_level=self.log_level, dry_run=self.dry_run)
+		}, log_level=5, dry_run=self.dry_run)
 
 		if self.dry_run:
 			self.jwt = {
@@ -171,7 +166,7 @@ class User:
 				"Content-Type": "application/x-www-form-urlencoded"
 			},
 			"data": data
-		}, log_level=self.log_level, dry_run=self.dry_run)
+		}, log_level=5, dry_run=self.dry_run)
 
 		if self.dry_run:
 			self.access_token = "access-xxxxx-refreshed"
@@ -208,7 +203,7 @@ class User:
 			"headers": {
 				"Content-Type": "application/x-www-form-urlencoded"
 			}
-		}, log_level=self.log_level, dry_run=self.dry_run)
+		}, log_level=5, dry_run=self.dry_run)
 
 		if self.dry_run:
 			self._info = {
