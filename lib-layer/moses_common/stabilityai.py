@@ -103,11 +103,11 @@ class StableDiffusion(StabilityAI):
 	def __init__(self, stability_key=None, save_directory=None, model='sdxl10', log_level=5, dry_run=False):
 		super().__init__(stability_key=stability_key, save_directory=save_directory, log_level=log_level, dry_run=dry_run)
 		
-		if model == 'sd15':
-			engine = 'stable-diffusion-v1-5'
-			self._name = 'sd15'
+		if model in ['sd15', 'sd16']:
+			engine = 'stable-diffusion-v1-6'
+			self._name = 'sd16'
 		elif model == 'sdxl':
-			engine = 'stable-diffusion-xl-beta-v2-2-2'
+			engine = 'stable-diffusion-xl-1024-v1-0'
 			self._name = 'sdxl'
 		elif model == 'sdxl09':
 			engine = 'stable-diffusion-xl-1024-v0-9'
@@ -137,6 +137,8 @@ class StableDiffusion(StabilityAI):
 	def label(self):
 		if self._name == 'sd15':
 			return "Stable Diffusion 1.5"
+		elif self._name == 'sd16':
+			return "Stable Diffusion 1.6"
 		elif self._name == 'sdxl09':
 			return "Stable Diffusion XL 0.9"
 		elif self._name == 'sdxl10':
@@ -150,7 +152,7 @@ class StableDiffusion(StabilityAI):
 		width = 1024
 		height = 1024
 		
-		if self.name in ['sd15', 'sdxl']:
+		if self.name in ['sd15', 'sd16', 'sdxl']:
 			if ar >= 1.625:
 				width = 896
 				height = 512
@@ -335,7 +337,7 @@ class StableDiffusion(StabilityAI):
 		if self.dry_run:
 			return True, data
 		
-		if self.name == 'sd15':
+		if self.name in ['sd15', 'sd16']:
 			print(f"Using {self.label}")
 			answers = self._stability_api.generate(
 				prompt = sd_prompt,
