@@ -32,11 +32,11 @@ class Bucket:
 		response = self.client.list_buckets()
 		
 # 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response) and 'Buckets' in response and type(response['Buckets']) is list:
+		if common.is_success(response) and 'Buckets' in response and type(response['Buckets']) is list:
 			for bucket in response['Buckets']:
 				if bucket['Name'] == self.name:
 					return bucket
-		return False
+		return None
 	
 	@property
 	def name(self):
@@ -64,7 +64,7 @@ class Bucket:
 			raise e
 		else:
 # 			print("response {}: {}".format(type(response), response))
-			if aws.is_success(response) and 'CORSRules' in response and type(response['CORSRules']) is list:
+			if common.is_success(response) and 'CORSRules' in response and type(response['CORSRules']) is list:
 				return response['CORSRules']
 		return None
 	
@@ -81,7 +81,7 @@ class Bucket:
 			raise e
 		else:
 # 			print("response {}: {}".format(type(response), response))
-			if aws.is_success(response) and 'Body' in response:
+			if common.is_success(response) and 'Body' in response:
 				body = response['Body'].read()
 				body_string = body.decode('utf-8')
 				return body_string
@@ -110,7 +110,7 @@ class Bucket:
 			raise e
 		else:
 # 			print("response {}: {}".format(type(response), response))
-			if aws.is_success(response) and 'LoggingEnabled' in response and type(response['LoggingEnabled']) is dict:
+			if common.is_success(response) and 'LoggingEnabled' in response and type(response['LoggingEnabled']) is dict:
 				return response['LoggingEnabled']
 		return None
 	
@@ -130,7 +130,7 @@ class Bucket:
 			raise e
 		else:
 # 			print("response {}: {}".format(type(response), response))
-			if aws.is_success(response) and 'Body' in response:
+			if common.is_success(response) and 'Body' in response:
 				content = response['Body'].read().decode('utf-8')
 				return content
 		return None
@@ -147,7 +147,7 @@ class Bucket:
 			raise e
 		else:
 # 			print("response {}: {}".format(type(response), response))
-			if aws.is_success(response) and 'Policy' in response and type(response['Policy']) is str and aws.is_json(response['Policy']):
+			if common.is_success(response) and 'Policy' in response and type(response['Policy']) is str and common.is_json(response['Policy']):
 				return json.loads(response['Policy'])
 		return None
 	
@@ -163,7 +163,7 @@ class Bucket:
 			raise e
 		else:
 # 			print("response {}: {}".format(type(response), response))
-			if aws.is_success(response) and 'TagSet' in response and type(response['TagSet']) is list:
+			if common.is_success(response) and 'TagSet' in response and type(response['TagSet']) is list:
 				return response['TagSet']
 		return None
 	
@@ -172,7 +172,7 @@ class Bucket:
 	"""
 	def create(self):
 		if self.dry_run:
-			self.ui.dry_run(f"s3.create_bucket({self.name})")
+			self.ui.dry_run(f"s3.create_bucket('{self.name}')")
 			return True
 		
 		response = self.client.create_bucket(
@@ -187,7 +187,7 @@ class Bucket:
 		if type(response) is dict and 'Location' in response and type(response['Location']) is str:
 			self.info = { 'Name': self.name }
 			self.exists = True
-			return self.get_name()
+			return True
 		return False
 	
 	"""
@@ -206,7 +206,7 @@ class Bucket:
 		)
 		
 # 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response):
+		if common.is_success(response):
 			return True
 		return False
 		
@@ -225,7 +225,7 @@ class Bucket:
 		)
 		
 # 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response):
+		if common.is_success(response):
 			return True
 		return False
 		
@@ -248,7 +248,7 @@ class Bucket:
 		)
 		
 # 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response):
+		if common.is_success(response):
 			return True
 		return False
 		
@@ -269,7 +269,7 @@ class Bucket:
 		)
 		
 # 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response):
+		if common.is_success(response):
 			return True
 		return False
 		
@@ -281,7 +281,7 @@ class Bucket:
 			self.ui.dry_run(f"s3.put_bucket_tagging({self.name})")
 			return True
 		
-		tags_list = aws.convert_tags(tags, 'upper')
+		tags_list = common.convert_dict_to_list(tags)
 		response = self.client.put_bucket_tagging(
 			Bucket = self.name,
 			Tagging = {
@@ -290,7 +290,7 @@ class Bucket:
 		)
 		
 # 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response):
+		if common.is_success(response):
 			return True
 		return False
 		
@@ -307,7 +307,7 @@ class Bucket:
 			UserName = self.name
 		)
 		print("response {}: {}".format(type(response), response))
-		if aws.is_success(response):
+		if common.is_success(response):
 			self.info = False
 			self.exists = False
 			return True
@@ -324,7 +324,7 @@ class Object:
 		self.ui = ui or moses_common.ui.Interface()
 		self.bucket = bucket
 		if type(bucket) is str:
-			self.bucket = Bucket(bucket)
+			self.bucket = Bucket(bucket, ui=self.ui, dry_run=self.dry_run)
 		self.client = self.bucket.client
 		self.object_name = object_name
 	

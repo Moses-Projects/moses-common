@@ -272,7 +272,7 @@ class Request:
 
 	@property
 	def cookies(self):
-		if self._event['headers'].get('Cookie'):
+		if 'headers' in self._event and self._event['headers'].get('Cookie'):
 			cookies = common.url_decode(self._event['headers']['Cookie'])
 			for key, value in cookies.items():
 				new_value = []

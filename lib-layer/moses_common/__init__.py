@@ -1312,14 +1312,6 @@ def is_date(input):
 	return False
 
 """
-boolean = common.is_email(input)
-"""
-def is_email(input):
-	if type(input) is not str:
-		return False
-	return '@' in parseaddr(input)[1]
-
-"""
 Checks for a datetime time object.
 boolean = common.is_time(input)
 """
@@ -1540,6 +1532,24 @@ def convert_to_str(input):
 	return str(input)
 
 """
+boolean = common.is_email(input)
+"""
+def is_email(input):
+	if type(input) is not str:
+		return False
+	return '@' in parseaddr(input)[1]
+
+"""
+boolean = common.is_hostname(input)
+"""
+def is_hostname(input):
+	if type(input) is not str:
+		return False
+	if re.match(r"(?=.{1,253}$)(?!-)[A-Z\d-]{1,63}(?<!-)(\.(?!-)[A-Z\d-]{1,63}(?<!-)){1,126}\.?$", input, re.IGNORECASE):
+		return True
+	return False
+
+"""
 boolean = common.is_url(input)
 """
 def is_url(input):
@@ -1687,11 +1697,12 @@ Field types:
 	alphanumeric
 	boolean
 	dict
-	email
 	list
 	datetime
 	date
 	time
+	email
+	hostname
 	url
 	uuid
 	doc_id
@@ -1792,6 +1803,10 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			if not is_email(body[key]):
 				errors.append("'{}' must be an email address".format(key))
 				continue
+		elif ftype == "hostname":
+			if not is_hostname(body[key]):
+				errors.append("'{}' must be a hostname".format(key))
+				continue
 		elif ftype == "url":
 			if not is_url(body[key]):
 				errors.append("'{}' must be a url".format(key))
@@ -1806,12 +1821,12 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 				continue
 
 		# Verify restrictions and set values
-		if sub_map and ftype in ['str', 'int']:
+		if sub_map and ftype in ['str', 'int', 'alphanumeric', 'email', 'hostname']:
 			if body[key] not in sub_map:
 				errors.append("'{}' should be one of '{}'.".format(key, "', '".join(sub_map)))
 				continue
 			output[key] = str(body[key])
-		elif ftype == "str":
+		elif ftype in ['str', 'alphanumeric', 'email', 'hostname', 'url']:
 			if min_length and (body[key] is None or len(body[key]) < min_length):
 				errors.append("'{}' should not be less than {} characters long".format(key, min_length))
 				continue
