@@ -9,23 +9,32 @@ import logging
 import re
 import os
 import sys
+from dataclasses import dataclass
+# from functools import cached_property
+from typing import Any, Dict, Optional
 
 import moses_common.__init__ as common
 
 
-"""
-import moses_common.ui
-"""
+@dataclass
+class ValidationResult:
+    valid: bool
+    data: Optional[Dict[str, Any]] = None
+    errors: Optional[Dict[str, str]] = None
+
 
 class Interface:
 	"""
+	import moses_common.ui
 	ui = moses_common.ui.Interface()
 	"""
-	def __init__(self, use_slack_format=False, force_whitespace=False, usage_message=None, log_messages=None, log_level=None):
+	def __init__(self, use_slack_format=False, force_whitespace=False, schema=None, usage_message=None, log_messages=None, log_level=None):
 
 		self.use_slack_format = common.convert_to_bool(use_slack_format) or False
 
 		self.force_whitespace = common.convert_to_bool(force_whitespace) or False
+		
+		self.schema = schema
 
 # 		functions = inspect.stack()
 # 		for function in functions:
@@ -100,22 +109,24 @@ class Interface:
 			self.logger.setLevel(level_info['logging_num'])
 		self._log_level = level_info['syslog_num']
 
+# 	@cached_property
 	@property
-	def supports_color(self):
+	def supports_color(self) -> bool:
 		if common.is_bbedit():
 			return False
 		if os.environ.get('TERM') and os.environ.get('TERM') not in ['dumb', 'tty']:
 			return True
 
+# 	@cached_property
 	@property
-	def is_person(self):
-		if self.supports_color or os.environ.get('SSH_AUTH_SOCK'):
-			return True
+	def is_person(self) -> bool:
+		return self.supports_color or os.environ.get('SSH_AUTH_SOCK')
 
+# 	@cached_property
 	@property
-	def is_aws_lambda(self):
-		if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
-			return True
+	def is_aws_lambda(self) -> bool:
+		return common.is_lambda() and not common.is_local()
+	
 
 	def configure_logging(self):
 		if not self.log_messages:
@@ -197,7 +208,56 @@ class Interface:
 		setattr(logging, method_name, log_to_root)
 
 
-	### Arg handing
+	### Input handing
+	def process_input(self, event=None) -> ValidationResult:
+		raw_input = {}
+		
+		# Step 1: Extract raw input from one of the sources
+		if common.is_cli() or common.is_bbedit():
+			args, opts = self.get_options(self.schema)
+			raw_input = {**args, **opts}
+	
+		elif event is not None:
+			# API Gateway
+			if 'requestContext' in event:
+				if event.get("queryStringParameters"):
+					raw_input.update(event["queryStringParameters"])
+				if event.get("body"):
+					raw_input.update(common.convert_value(event['body']))
+			# Abbreviated API Gateway
+			elif event.get("query") or event.get("body"):
+				if event.get("query"):
+					raw_input.update(event["query"])
+				if event.get("body"):
+					raw_input.update(event["body"])
+			# Direct JSON
+			else:
+				raw_input.update(event)
+			
+			# Second pass to convert to lists
+			if self.schema.get('args'):
+				for arg in self.schema['args']:
+					if arg['name'] in raw_input and arg.get('is_list') and type(raw_input[arg['name']]) is not list:
+						raw_input[arg['name']] = [raw_input[arg['name']]]
+						if 'multiValueQueryStringParameters' in event and event["multiValueQueryStringParameters"].get(arg['name']):
+							raw_input[arg['name']] = event["multiValueQueryStringParameters"][arg['name']]
+			if self.schema.get('opts'):
+				for opt in self.schema['opts']:
+					if opt['name'] in raw_input and opt.get('is_list') and type(raw_input[opt['name']]) is not list:
+						raw_input[opt['name']] = [raw_input[opt['name']]]
+						if 'multiValueQueryStringParameters' in event and event["multiValueQueryStringParameters"].get(opt['name']):
+							raw_input[opt['name']] = event["multiValueQueryStringParameters"][opt['name']]
+		
+		# Step 2: Validate and coerce according to schema
+		print("self.schema {}: {}".format(type(self.schema), self.schema))
+		data, errors = common.check_input(self.schema, raw_input)
+		
+		if errors:
+			return ValidationResult(valid=False, errors=errors)
+	
+		return ValidationResult(valid=True, data=data)
+    
+    	
 	"""
 	arguments, options = self.get_options({
 		"description": "Main description line of usage.",
@@ -445,7 +505,10 @@ class Interface:
 						value = [value]
 						for i in range(len(args)):
 							value.append(args.pop(0))
-					self._args[param['name']] = value
+					if param.get('is_list'):
+						self._args[param['name']] = [value]
+					else:
+						self._args[param['name']] = value
 				else:
 					self._args[param['name']] = None
 			self._args['args'] = args

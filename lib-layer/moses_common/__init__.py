@@ -14,6 +14,7 @@ import math
 import os
 import re
 import requests
+import secrets
 import sys
 import unidecode
 import urllib.request
@@ -563,6 +564,7 @@ new_records = common.map_csv(records, {
 	"field": { "name": "csv_field_name", "type": "map", "map": { "value_from_import_field": "value_to_use" } },
 	"field": { "type": "literal", "value": "value_of_any_type" }
 })
+type: 'str', 'int', 'float', 'bool', 'datetime', 'date', 'time', 'map'
 """
 def map_csv(records, mapping):
 	new_records = []
@@ -820,10 +822,17 @@ def set_basic_args(event):
 
 ## UUID handling
 """
-uuid = generate_uuid()
+uuid = common.generate_uuid()
 """
 def generate_uuid():
 	return str(uuid.uuid4())
+
+"""
+doc_id = common.generate_doc_id()
+"""
+def generate_doc_id(length=22):
+	alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+	return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
 ## Text handling
@@ -1107,15 +1116,15 @@ def round_half_up(n, decimals=0):
 ## Hash handling
 
 """
-Collapses inner dicts by combining keys with hyphens. A key with the same name as the enclosing dict is named for the enclosing dict.
+Collapses inner dicts by combining keys with a delimiter. A key with the same name as the enclosing dict is named for the enclosing dict.
 flat_hash = common.flatten_hash(full_hash)
 flat_hash = common.flatten_hash(full_hash, delimiter='-', exempt=['field1', 'field2'])
 """
-def flatten_hash(input, upper_key=None, inner_key=None, delimiter='-', exempt=[]):
-	if type(input) is not dict:
+def flatten_hash(input_dict, upper_key=None, inner_key=None, delimiter='-', exempt=[]):
+	if type(input_dict) is not dict:
 		return None
 	output = {}
-	for key, value in input.items():
+	for key, value in input_dict.items():
 		new_key = key
 		if inner_key == key:
 			new_key = upper_key
@@ -1128,6 +1137,35 @@ def flatten_hash(input, upper_key=None, inner_key=None, delimiter='-', exempt=[]
 				output[subkey] = subvalue
 		else:
 			output[new_key] = value
+	return output
+
+"""
+Expands keys with delimiter into inner dicts. A key with the same name as the enclosing dict is named for the enclosing dict.
+full_hash = common.expand_hash(flat_hash)
+full_hash = common.expand_hash(flat_hash, delimiter='-')
+"""
+def expand_hash(input_dict, upper_key=None, inner_key=None, delimiter='-', exempt=[]):
+	if type(input_dict) is not dict:
+		return None
+	output = {}
+	for full_key, value in input_dict.items():
+		parts = full_key.split(delimiter)
+		current = output
+
+		for i, part in enumerate(parts):
+			if i == len(parts) - 1:
+				# If we're at the end of the key path, set the value
+				if part in current and isinstance(current[part], dict):
+					# Conflict: existing dict, keep dict structure
+					current[part][full_key] = value
+				else:
+					current[part] = value
+			else:
+				# Intermediate keys: create nested dict if needed
+				if part not in current or not isinstance(current[part], dict):
+					current[part] = {}
+				current = current[part]
+
 	return output
 
 """
@@ -1226,7 +1264,7 @@ list = to_list(hash_of_hashes, key)
 list = to_list(list_of_hashes, key)
 	[hash1_key_value, hash2_key_value, ...]
 """
-def to_list(input=None, key=None, unique=False):
+def to_list(input=None, key=None, unique=False, strip_whitespace=False):
 	output = []
 	# hashes inside a list or hash
 	if key:
@@ -1234,22 +1272,33 @@ def to_list(input=None, key=None, unique=False):
 		if type(input) is list:
 			for item in input:
 				if type(item) is dict and key in item:
-					output.append(item[key])
+					value = item[key]
+					if strip_whitespace and type(value) is str:
+						value = item[key].strip()
+					output.append(value)
 		# hash
 		elif type(input) is dict:
 			# hash with key
 			if key in input:
-				output.append(input[key])
+				value = item[key]
+				if strip_whitespace and type(value) is str:
+					value = item[key].strip()
+				output.append(value)
 			# hash with hashes containing key
 			else:
 				for k, item in input.items():
 					if type(item) is dict and key in item:
-						output.append(item[key])
+						value = item[key]
+						if strip_whitespace and type(value) is str:
+							value = item[key].strip()
+						output.append(value)
 	# hash without key
 	elif type(input) is dict:
 		output.append(input)
 	# single value
 	elif type(input) is str or type(input) is int or type(input) is float or type(input) is bool:
+		if strip_whitespace and type(input) is str:
+			input = input.strip()
 		output = [input]
 	# already a list
 	elif type(input) is list:
@@ -1712,24 +1761,45 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 	output = {}
 	errors = []
 	field_map = {}
+	if type(field_list) is not list:
+		return {}, ["Invalid schema for check_input"]
+	if not field_list:
+		return {}, []
 	for field in field_list:
 		# Read args and set variables
-		key = field[0]
-		ftype = field[1]
-		required = False
-		sub_map = None
-		if len(field) >= 3:
-			if type(field[2]) is bool:
-				required = field[2]
-			elif type(field[2]) is list:
-				sub_map = field[2]
-		min_length = 0
-		if len(field) >= 4 and type(field[3]) is int:
-			min_length = field[3]
-		max_length = 0
-		if len(field) >= 5 and type(field[4]) is int:
-			max_length = field[4]
-		elif ftype == 'int':
+		value_list = None
+		children = None
+		if type(field) is dict:
+			key = field['name']
+			ftype = field.get('type', 'str')
+			required = field.get('required', False)
+			min_length = field.get('min', 0)
+			max_length = field.get('max', 0)
+			if field.get('values'):
+				value_list = field['values']
+			if ftype in ['dict', 'list'] and field.get('children'):
+				children = field['children']
+		else:
+			key = field[0]
+			ftype = field[1]
+			required = False
+			value_list = None
+			if len(field) >= 3:
+				if type(field[2]) is bool:
+					required = field[2]
+				elif type(field[2]) is list:
+					value_list = field[2]
+			min_length = 0
+			if len(field) >= 4:
+				if type(field[3]) is int:
+					min_length = field[3]
+				elif ftype in ['dict', 'list']:
+					children = field[3]
+			max_length = 0
+			if len(field) >= 5 and type(field[4]) is int:
+				max_length = field[4]
+		
+		if ftype == 'int' and max_length == 0:
 			max_length = 2147483647
 		if ftype == 'bool':
 			ftype = 'boolean'
@@ -1746,14 +1816,18 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			"min_length": min_length,
 			"max_length": max_length
 		}
-		if sub_map:
-			field_map[key] = sub_map
+		if value_list:
+			field_map[key] = value_list
 
 		# Check required
-		if key not in body or body[key] is None:
+		if key not in body:
 			if (type(required) is list or required):
 				errors.append("'{}' is required".format(key))
 			continue
+		if body[key] is None:
+			if (type(required) is list or required):
+				errors.append("'{}' is required".format(key))
+				continue
 		if type(required) is list:
 			if body[key] not in required:
 				errors.append("'{}' must be one of '{}'".format(key, "', '".join(required)))
@@ -1761,7 +1835,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			continue
 
 		# Verify type
-		if allow_none and body[key] is None:
+		if not required and body[key] is None:
 			pass
 		elif ftype == "str":
 			if type(body[key]) is not str:
@@ -1821,9 +1895,11 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 				continue
 
 		# Verify restrictions and set values
-		if sub_map and ftype in ['str', 'int', 'alphanumeric', 'email', 'hostname']:
-			if body[key] not in sub_map:
-				errors.append("'{}' should be one of '{}'.".format(key, "', '".join(sub_map)))
+		if not required and body[key] is None:
+			output[key] = None
+		elif value_list and ftype in ['str', 'int']:
+			if body[key] not in value_list:
+				errors.append("'{}' should be one of '{}'.".format(key, "', '".join(value_list)))
 				continue
 			output[key] = str(body[key])
 		elif ftype in ['str', 'alphanumeric', 'email', 'hostname', 'url']:
@@ -1853,8 +1929,8 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 		elif ftype == "boolean":
 			output[key] = convert_to_bool(body[key])
 		elif ftype == "dict" or ftype == "list":
-			if len(field) >= 4:
-				sub_output, sub_errors = check_input(field[3], body[key])
+			if children:
+				sub_output, sub_errors = check_input(children, body[key], allow_none=allow_none, remove_none=remove_none)
 				if len(sub_output):
 					output[key] = sub_output
 				if len(sub_errors):
@@ -1900,34 +1976,31 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 
 # Serverless functions
 
+## How is it called?
 # Invoked using Lambda
-def is_lambda():
-	if 'LAMBDA_TASK_ROOT' in os.environ:
-		return True
-	return False
-
-# Called as a script
-def is_cli():
-	return not is_lambda()
+def is_lambda() -> bool:
+	return 'LAMBDA_TASK_ROOT' in os.environ
 
 # Called as a BBEdit script
-def is_bbedit():
-	if not is_lambda() and os.environ.get('BBEDIT_PID'):
-		return True
-	return False
+def is_bbedit() -> bool:
+	return 'BBEDIT_PID' in os.environ
 
+# Called as a script
+def is_cli() -> bool:
+	return not is_lambda()
+
+
+## Where is it called? Helpful for knowing whether to use tunnels
 # Running locally on a client machine
 def is_local():
-	if is_cli() or os.environ.get('IS_LOCAL') == 'true':
-		if 'USER' in os.environ and os.environ['USER'] != 'ubuntu':
-			return True
+	if (is_cli() or is_bbedit() or os.environ.get('IS_LOCAL') == 'true') and 'SSH_CLIENT' not in os.environ:
+		return True
 	return False
 
 # Running at AWS
 def is_aws():
-	if not is_local():
-		return True
-	return False
+	return not is_local()
+
 
 
 # AWS functions

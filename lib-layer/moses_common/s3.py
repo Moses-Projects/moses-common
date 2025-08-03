@@ -306,7 +306,7 @@ class Bucket:
 		response = self.client.delete_bucket(
 			UserName = self.name
 		)
-		print("response {}: {}".format(type(response), response))
+# 		print("response {}: {}".format(type(response), response))
 		if common.is_success(response):
 			self.info = False
 			self.exists = False
