@@ -14,14 +14,13 @@ class Topic:
 	"""
 	import moses_common.sns
 	topic = moses_common.sns.Email(topic_arn)
-	topic = moses_common.sns.Email(topic_arn, log_level=5, dry_run=False)
+	topic = moses_common.sns.Email(topic_arn, ui=None, dry_run=False)
 	
 	Requires sns:Publish
 	"""
-	def __init__(self, topic_arn, log_level=5, dry_run=False):
-		self.log_level = log_level
+	def __init__(self, topic_arn, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
+		self.ui = ui or moses_common.ui.Interface()
 	
 		self.client = boto3_client('sns', region_name="us-west-2")
 		
@@ -29,14 +28,6 @@ class Topic:
 			raise ValueError("An SNS topic name is required")
 		self.topic_arn = topic_arn
 	
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	def get_ts(self):
 		return datetime.utcnow().isoformat(' ')
@@ -95,23 +86,14 @@ class Notification:
 	"""
 	import moses_common.sns
 	notification = moses_common.sns.Notification(event)
-	notification = moses_common.sns.Notification(event, log_level=5, dry_run=False)
+	notification = moses_common.sns.Notification(event, ui=None, dry_run=False)
 	"""
-	def __init__(self, event, log_level=5, dry_run=False):
-		self.log_level = log_level
+	def __init__(self, event, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
+		self.ui = ui or moses_common.ui.Interface()
 		
 		self.records = self.get_records(event)
 		self.messages = self.get_messages()
-	
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
 	
 	def get_records(self, event):
 		if type(event) is not dict or "Records" not in event or type(event['Records']) is not list or not event['Records']:
@@ -132,7 +114,7 @@ class Notification:
 			
 			message_data = re.sub(r'\\\\([\(\)])', r'$1', record["Message"])
 			message_data = common.convert_value(message_data)
-			message = moses_common.sns.Message(message_data, log_level=self.log_level, dry_run=self.dry_run)
+			message = moses_common.sns.Message(message_data, ui=self.ui, dry_run=self.dry_run)
 			messages.append(message)
 		return messages
 
@@ -142,29 +124,26 @@ class Message:
 	"""
 	import moses_common.sns
 	message = moses_common.sns.Message(raw_message_data)
-	message = moses_common.sns.Message(raw_message_data, log_level=5, dry_run=False)
+	message = moses_common.sns.Message(raw_message_data, ui=None, dry_run=False)
 	"""
-	def __init__(self, data, log_level=5, dry_run=False):
-		self.log_level = log_level
+	def __init__(self, data, ui=None, dry_run=False):
 		self.dry_run = dry_run
-		self.ui = moses_common.ui.Interface(use_slack_format=True)
+		self.ui = ui or moses_common.ui.Interface()
 		
-		print("data {}: {}".format(type(data), data))
+		self.ui.debug("data {}: {}".format(type(data), data))
 		self.data = data
 		
-	@property
-	def log_level(self):
-		return self._log_level
-	
-	@log_level.setter
-	def log_level(self, value):
-		self._log_level = common.normalize_log_level(value)
-	
 	@property
 	def mail_headers(self):
 		if 'mail' in self.data and 'commonHeaders' in self.data['mail']:
 			return self.data['mail']['commonHeaders']
-		return None
+		return {}
+	
+	@property
+	def mail_recipients(self):
+		if 'receipt' in self.data and 'recipients' in self.data['receipt']:
+			return self.data['receipt']['recipients']
+		return {}
 	
 	@property
 	def mail_subject(self):
@@ -192,6 +171,13 @@ class Message:
 		headers = self.mail_headers
 		if 'to' in headers:
 			return headers['to']
+		return None
+	
+	@property
+	def mail_cc(self):
+		headers = self.mail_headers
+		if 'cc' in headers:
+			return headers['cc']
 		return None
 	
 	@property

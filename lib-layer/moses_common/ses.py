@@ -53,6 +53,7 @@ class Email:
 			subject['Charset'] = charset
 		
 		content = {}
+		body = {}
 		if args.get('raw'):
 # 			args['raw'] = re.sub(r'Return-Path:.*?\r\n', r'Return-Path: <{}>\r\n'.format(self.from_address), args['raw'], 1, flags=re.IGNORECASE)
 			content = {
@@ -61,7 +62,6 @@ class Email:
 				}
 			}
 		else:
-			body = {}
 			if args.get('html'):
 				body['Html'] = {
 					"Data": args.get('html')
@@ -105,7 +105,7 @@ class Email:
 		if args.get('from_name'):
 			from_email_address = f"{args['from_name']} <{self.from_address}>"
 		
-		print("content {}: {}".format(type(content), content))
+		self.ui.body("content {}: {}".format(type(content), content))
 		response = self.client.send_email(
 			FromEmailAddress = from_email_address,
 			FromEmailAddressIdentityArn = self.from_address_arn,
