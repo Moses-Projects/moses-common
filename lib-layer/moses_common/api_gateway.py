@@ -211,7 +211,7 @@ class Request:
 	def input(self):
 		input = {}
 		if self._event['multiValueQueryStringParameters']:
-			input = self._event['multiValueQueryStringParameters']
+			input = copy.deepcopy(self._event['multiValueQueryStringParameters'])
 		if self.body:
 			for key, value in self.body.items():
 				if key in input:

@@ -1751,6 +1751,7 @@ Field types:
 	date
 	time
 	email
+	localpart
 	hostname
 	url
 	uuid
@@ -1877,6 +1878,10 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			if not is_email(body[key]):
 				errors.append("'{}' must be an email address".format(key))
 				continue
+		elif ftype == "localpart":
+			if not is_email(f"{body[key]}@example.com"):
+				errors.append("'{}' must be the local-part of an email address".format(key))
+				continue
 		elif ftype == "hostname":
 			if not is_hostname(body[key]):
 				errors.append("'{}' must be a hostname".format(key))
@@ -1902,7 +1907,7 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 				errors.append("'{}' should be one of '{}'.".format(key, "', '".join(value_list)))
 				continue
 			output[key] = str(body[key])
-		elif ftype in ['str', 'alphanumeric', 'email', 'hostname', 'url']:
+		elif ftype in ['str', 'alphanumeric', 'email', 'localpart', 'hostname', 'url']:
 			if min_length and (body[key] is None or len(body[key]) < min_length):
 				errors.append("'{}' should not be less than {} characters long".format(key, min_length))
 				continue

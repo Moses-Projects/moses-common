@@ -1,9 +1,10 @@
 service: moses-common
 frameworkVersion: '3'
+configValidationMode: warn
 
 provider:
   name: aws
-  runtime: python3.10
+  runtime: python3.12
   memorySize: 1024
   timeout: 6
   stage: dev
@@ -43,6 +44,8 @@ layers:
     description: "Common library for Moses Projects."
     compatibleRuntimes:
       - python3.10
+      - python3.11
+      - python3.12
     compatibleArchitectures:
       - x86_64
     retain: false
@@ -58,4 +61,4 @@ resources:
 plugins:
   - serverless-prune-plugin
   - serverless-python-requirements
-
+  - serverless-offline
