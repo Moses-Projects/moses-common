@@ -223,6 +223,22 @@ def decompress_gzip(gzip_bytes):
 	return output
 
 
+def _strip_backslash_before_single_quote(s):
+    # For any run of backslashes immediately before a single quote,
+    # if the count is odd, drop exactly one (so \\' -> \\', \' -> ').
+    def repl(m: re.Match) -> str:
+        n = len(m.group(0))  # number of backslashes
+        if n % 2 == 1:
+            return '\\' * (n - 1)  # remove exactly one
+        return m.group(0)          # even count: leave as-is
+    # Match one or more backslashes only when directly before a single quote
+    return re.sub(r'\\+(?=\')', repl, s)
+
+def _escape_other_invalid_backslashes(s):
+    # Double any backslash that does not start a valid JSON escape
+    # (so \x becomes \\x), but keep valid ones (\n, \t, \uXXXX, \", \\, \/)
+    return re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', s)
+
 """
 boolean = common.is_json(json_string)
 """
@@ -247,7 +263,9 @@ def parse_json(json_string):
 		return None
 	try:
 		# Remove invalid single quote escapes
-		json_string = re.sub(r'(?<!\\)\\([^u"])', r'\1', json_string)
+# 		json_string = re.sub(r'(?<!\\)\\([^u"])', r'\1', json_string)
+		json_string = _strip_backslash_before_single_quote(json_string)
+		json_string = _escape_other_invalid_backslashes(json_string)
 		json_object = json.loads(json_string)
 	except ValueError as e:
 		print(e)
@@ -260,7 +278,7 @@ json_string = common.make_json(python_object, pretty_print=True, sort_keys=True)
 """
 def make_json(python_object, pretty_print=False, sort_keys=False):
 	if is_json(python_object):
-		python_object = common.parse_json(python_object)
+		python_object = parse_json(python_object)
 	python_object = convert_datetime_to_string(python_object)
 	if pretty_print:
 		return json.dumps(python_object, sort_keys=sort_keys, indent=2)
@@ -1819,19 +1837,22 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 		}
 		if value_list:
 			field_map[key] = value_list
-
+		
+		# Quoted key
+		qkey = f"{quote_mark}{key}{quote_mark}"
+		
 		# Check required
 		if key not in body:
 			if (type(required) is list or required):
-				errors.append("'{}' is required".format(key))
+				errors.append("{} is required".format(qkey))
 			continue
 		if body[key] is None:
 			if (type(required) is list or required):
-				errors.append("'{}' is required".format(key))
+				errors.append("{} is required".format(qkey))
 				continue
 		if type(required) is list:
 			if body[key] not in required:
-				errors.append("'{}' must be one of '{}'".format(key, "', '".join(required)))
+				errors.append("{} must be one of '{}'".format(qkey, "', '".join(required)))
 		if remove_none and body[key] is None:
 			continue
 
@@ -1840,43 +1861,43 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			pass
 		elif ftype == "str":
 			if type(body[key]) is not str:
-				errors.append("'{}' must be a string".format(key))
+				errors.append("{} must be a string".format(qkey))
 				continue
 		elif ftype == "int":
 			if not is_int(body[key]):
-				errors.append("'{}' must be an integer".format(key))
+				errors.append("{} must be an integer".format(qkey))
 				continue
 		elif ftype == "boolean":
 			if convert_to_bool(body[key]) is None:
-				errors.append("'{}' must be a boolean".format(key))
+				errors.append("{} must be a boolean".format(qkey))
 				continue
 		elif ftype == "dict":
 			if type(body[key]) is not dict:
-				errors.append("'{}' must be a structure/hash".format(key))
+				errors.append("{} must be a structure/hash".format(qkey))
 				continue
 		elif ftype == "list":
 			if type(body[key]) is not list:
-				errors.append("'{}' must be a list/array".format(key))
+				errors.append("{} must be a list/array".format(qkey))
 				continue
 		elif ftype == "datetime":
 			if convert_string_to_datetime(body[key]) is None:
-				errors.append("'{}' must be a timestamp (datetime)".format(key))
+				errors.append("{} must be a timestamp (datetime)".format(qkey))
 				continue
 		elif ftype == "date":
 			if convert_string_to_date(body[key]) is None:
-				errors.append("'{}' must be a date".format(key))
+				errors.append("{} must be a date".format(qkey))
 				continue
 		elif ftype == "time":
 			if convert_string_to_time(body[key]) is None:
-				errors.append("'{}' must be a time".format(key))
+				errors.append("{} must be a time".format(qkey))
 				continue
 		elif ftype == "alphanumeric":
 			if type(body[key]) is not str or type(body[key]) is not int and not re.match(r'\w+$', str(body[key])):
-				errors.append("'{}' must only be alphanumeric characters or underscores".format(key))
+				errors.append("{} must only be alphanumeric characters or underscores".format(qkey))
 				continue
 		elif ftype == "email":
 			if not is_email(body[key]):
-				errors.append("'{}' must be an email address".format(key))
+				errors.append("{} must be an email address".format(qkey))
 				continue
 		elif ftype == "localpart":
 			if not is_email(f"{body[key]}@example.com"):
@@ -1884,19 +1905,19 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 				continue
 		elif ftype == "hostname":
 			if not is_hostname(body[key]):
-				errors.append("'{}' must be a hostname".format(key))
+				errors.append("{} must be a hostname".format(qkey))
 				continue
 		elif ftype == "url":
 			if not is_url(body[key]):
-				errors.append("'{}' must be a url".format(key))
+				errors.append("{} must be a url".format(qkey))
 				continue
 		elif ftype == "uuid":
 			if not is_uuid(body[key]):
-				errors.append("'{}' must be a uuid".format(key))
+				errors.append("{} must be a uuid".format(qkey))
 				continue
 		elif ftype == "doc_id":
 			if not is_doc_id(body[key]):
-				errors.append("'{}' must be a doc_id".format(key))
+				errors.append("{} must be a doc_id".format(qkey))
 				continue
 
 		# Verify restrictions and set values
@@ -1904,15 +1925,15 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 			output[key] = None
 		elif value_list and ftype in ['str', 'int']:
 			if body[key] not in value_list:
-				errors.append("'{}' should be one of '{}'.".format(key, "', '".join(value_list)))
+				errors.append("{} should be one of '{}'.".format(qkey, "', '".join(value_list)))
 				continue
 			output[key] = str(body[key])
 		elif ftype in ['str', 'alphanumeric', 'email', 'localpart', 'hostname', 'url']:
 			if min_length and (body[key] is None or len(body[key]) < min_length):
-				errors.append("'{}' should not be less than {} characters long".format(key, min_length))
+				errors.append("{} should not be less than {} long".format(qkey, plural(min_length, 'character')))
 				continue
 			if body[key] is None or (max_length and len(body[key]) > max_length):
-				errors.append("'{}' should not be greater than {} characters long".format(key, max_length))
+				errors.append("{} should not be greater than {} long".format(qkey, plural(max_length, 'character')))
 				continue
 			if allow_none and body[key] is None:
 				output[key] = None
@@ -1920,10 +1941,10 @@ def check_input(field_list, body, allow_none=False, remove_none=False, process_q
 				output[key] = str(body[key])
 		elif ftype == "int":
 			if min_length and (body[key] is None or int(body[key]) < min_length):
-				errors.append("'{}' should be greater than {}".format(key, min_length))
+				errors.append("{} should be greater than {}".format(qkey, min_length))
 				continue
 			if body[key] is None or (max_length and int(body[key]) > max_length):
-				errors.append("'{}' should be less than {}".format(key, max_length))
+				errors.append("{} should be less than {}".format(qkey, max_length))
 				continue
 			if allow_none and body[key] is None:
 				output[key] = None
