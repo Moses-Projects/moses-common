@@ -1,0 +1,202 @@
+I am writing a Python function for an API to take a path and method and match it to a schema defining what each method/path should do. The schema is a dict where a path is the key and the value is a subordinate dict with a key for each method and a value that is a dict defining what action should take place. Giving the function the path, method, and schema should return the associated action definition of what should happen. Here is an example schema:
+example_schema = {
+	"/domains": {
+		"GET": { action definition 1 },
+		"POST": { action definition 2 }
+	},
+	"/domains/{domain}": {
+		"GET": { action definition 3 },
+		"PATCH": { action definition 4 },
+		"DELETE": { action definition 5 }
+	},
+	"/domains/{domain}/aliases": {
+		"GET": { action definition 6 },
+		"POST": { action definition 7 }
+	},
+	"/domains/{domain}/aliases/{localpart}": {
+		"GET": { action definition 8 },
+		"PATCH": { action definition 9 },
+		"DELETE": { action definition 10 }
+	}
+}
+If the key contains a variable name in braces, the function should return the value for that position in the path associated with the variable name. The function should optionally accept a path prefix.
+
+An example call to the function using the schema above, would look like this:
+
+path = '/api/v1/domains'
+method = 'GET'
+path_prefix = '/api/v1'
+response = parse_api(example_schema, path, method, path_prefix=path_prefix)
+
+The output in response should be:
+{
+	"action": { action definition 1 },
+	"path_vars": {}
+}
+
+Another example:
+
+path = '/api/v1/domains/example.com/aliases/support'
+method = 'PATCH'
+path_prefix = '/api/v1'
+response = parse_api(example_schema, path, method, path_prefix=path_prefix)
+
+The output in response should be:
+{
+	"action": { action definition 9 },
+	"path_vars": {
+		"domain": "example.com",
+		"localpart": "support"
+	}
+}
+
+
+
+I'd like another of a set of modules to go with the APIRouter that will process the actions defined for each path. The first module will work with DynamoDB. It should receive an owner string on init and have a function that receives a method, an action definition from the api schema, path vars, and a dict of query string or body values submitted with the request.
+
+Here is an example that will work with two DynamoDB tables.
+Table: 0ml.domain
+Example record:
+{
+	"domain": "example.com",
+	"owner": "owner_string",
+	"action": "forward",
+	"address": "user@example.net",
+	"create_time": "2023-08-11 20:22:46.477604",
+	"update_time": "2025-08-19 15:40:33.673159"
+}
+
+Table: 0ml.address
+Example record:
+{
+    "domain": "example.com",
+    "local": "webmaster",
+    "action": "forward",
+	"address": "user2@example.net",
+	"create_time": "2023-08-11 20:22:46.477604",
+	"update_time": "2025-08-19 15:40:33.673159"
+}
+
+The example API schema showing action definitions.
+example_schema = {
+		"/domains": {
+			"GET": {
+				"source": "ddb",
+				"table_name": "0ml.domain",
+				"index_name": "owner-domain-index",
+				"key_schema": {
+					"table": { "pk": "domain", "sk": "owner" },
+					"indices": {
+						"owner-domain-index": { "pk": "owner", "sk": "domain" }
+					}
+				},
+				"fields": [
+					[ "owner", "str", True ]
+				]
+			},
+			"POST": {
+				"source": "ddb",
+				"table_name": "0ml.domain",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "owner", "str", True ],
+					[ "action", "str", ["bounce", "forward", "ignore"] ],
+					[ "address", "email", False ]
+				]
+			}
+		},
+		"/domains/{domain}": {
+			"GET": {
+				"source": "ddb",
+				"table_name": "0ml.domain",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "owner", "str", True ]
+				]
+			},
+			"PATCH": {
+				"source": "ddb",
+				"table_name": "0ml.domain",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "owner", "str", True ],
+					[ "action", "str", ["bounce", "forward", "ignore"] ],
+					[ "address", "email", False ]
+				]
+			},
+			"DELETE": {
+				"source": "ddb",
+				"table_name": "0ml.domain",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "owner", "str", True ]
+				]
+			}
+		},
+		"/domains/{domain}/aliases": {
+			"GET": {
+				"source": "ddb",
+				"table_name": "0ml.address",
+				"fields": [
+					[ "domain", "hostname", True ]
+				]
+			},
+			"POST": {
+				"source": "ddb",
+				"table_name": "0ml.address",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "local", "localpart", True ],
+					[ "action", "str", ["bounce", "forward", "ignore"] ],
+					[ "address", "email", False ]
+				]
+			}
+		},
+		"/domains/{domain}/aliases/{local}": {
+			"GET": {
+				"source": "ddb",
+				"table_name": "0ml.address",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "local", "localpart", True ]
+				]
+			},
+			"PATCH": {
+				"source": "ddb",
+				"table_name": "0ml.address",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "local", "localpart", True ],
+					[ "action", "str", ["bounce", "forward", "ignore"] ],
+					[ "address", "email", False ]
+				]
+			},
+			"DELETE": {
+				"source": "ddb",
+				"table_name": "0ml.address",
+				"fields": [
+					[ "domain", "hostname", True ],
+					[ "local", "localpart", True ]
+				]
+			}
+		}
+}
+The "table_name" field contains the name of the DynamoDB table.
+The "index_name" field contains the name of an index in the DynamoDB table.
+The "fields" section includes a list of field definitions. The first element in the list represents the name of the field in the DynamoDB table. The second element is for validation of the value. The third can be a boolean or a list. As a boolen, it specifies whether the field is required. As a list, the value for the field must match one of the elements in the list.
+
+The function that processes the action definition should use path vars as the definitive values and use the query string or body for fields not represented in path vars. The resulting values should be used as input for the actions, but first run through the check_input() fuction. The check_input function is passed the field definitions and the input dict. It will return an output dict containing the validated field/value pairs and a list that may contain errors.
+
+	import moses_common.__init__ as common
+	output_dict, errors = common.check_input(field_definitions, input_dict)
+
+If there are no errors, the output dict should be used to take an appropriate action on the table with GET doing a query on the specified table or index and POST inserting a record, PATCH updating a record, and DELETE deleting a record.
+
+Records inserted into any DynamoDB table should automatically include the current timestamp as "create_time". Updates to records in any DynamoDB table should automatically set "update_time" to the current timestamp.
+
+If check_input() returns errors, no action should take place and the errors should be returned from the function.
+
+Before writing code, ask for clarification on anything I have described and make suggestions on anything that looks wrong or might work better.
+
+
+str, int, alphanumeric, boolean, dict, list, datetime, date, time, email, localpart, hostname, url, uuid, doc_id

@@ -170,6 +170,9 @@ class UserPool:
 			return True
 		
 		service_name = args.get('service_name') or 'service'
+		mfa_configuration = "OFF"
+		if args.get('sms_configuration'):
+			mfa_configuration = "ON"
 		response = self.client.create_user_pool(
 			PoolName = self.name,
 			Policies = {
@@ -187,20 +190,20 @@ class UserPool:
 				}
 			},
 			DeletionProtection = "ACTIVE",
-			LambdaConfig = args.get('lambda_config'),
+			LambdaConfig = args.get('lambda_config', {}),
 			AutoVerifiedAttributes = ["email"],
 			UsernameAttributes = ["email"],
-			SmsVerificationMessage = "Your {} verification code is {####}. By verifying you agree to receive messages. Text STOP to opt-out. Msg & data rates apply.".format(service_name),
-			EmailVerificationMessage = "Your {} MFA verification code is {####}.".format(service_name),
+			SmsVerificationMessage = "Your {} verification code is {{####}}. By verifying you agree to receive messages. Text STOP to opt-out. Msg & data rates apply.".format(service_name),
+			EmailVerificationMessage = "Your {} MFA verification code is {{####}}.".format(service_name),
 			EmailVerificationSubject = "Your {} MFA verification code".format(service_name),
 			VerificationMessageTemplate = {
-				"SmsMessage": "Your {} verification code is {####}. By verifying you agree to receive messages. Text STOP to opt-out. Msg & data rates apply.".format(service_name),
-				"EmailMessage": "Your {} MFA verification code is {####}.".format(service_name),
+				"SmsMessage": "Your {} verification code is {{####}}. By verifying you agree to receive messages. Text STOP to opt-out. Msg & data rates apply.".format(service_name),
+				"EmailMessage": "Your {} MFA verification code is {{####}}.".format(service_name),
 				"EmailSubject": "Your {} MFA verification code".format(service_name),
 				"DefaultEmailOption": "CONFIRM_WITH_CODE"
 			},
-			SmsAuthenticationMessage = "Your {} authentication code is {####}.".format(service_name),
-			MfaConfiguration = "ON",
+			SmsAuthenticationMessage = "Your {} authentication code is {{####}}.".format(service_name),
+			MfaConfiguration = mfa_configuration,
 			UserAttributeUpdateSettings={
 				"AttributesRequireVerificationBeforeUpdate": ["email"]
 			},
@@ -208,14 +211,14 @@ class UserPool:
 				"ChallengeRequiredOnNewDevice": False,
 				"DeviceOnlyRememberedOnUserPrompt": False
 			},
-			EmailConfiguration = args.get('email_configuration'),
-			SmsConfiguration = args.get('sms_configuration'),
+			EmailConfiguration = args.get('email_configuration', {}),
+# 			SmsConfiguration = args.get('sms_configuration', {}),
 			UserPoolTags = {},
 			AdminCreateUserConfig = {
 				"AllowAdminCreateUserOnly": True,
 				"InviteMessageTemplate": {
-					"SMSMessage": "Your {} username is {username} and temporary password is {####}.".format(service_name),
-					"EmailMessage": "Your {} username is {username} and temporary password is {####}.".format(service_name),
+					"SMSMessage": "Your {} username is {{username}} and temporary password is {{####}}.".format(service_name),
+					"EmailMessage": "Your {} username is {{username}} and temporary password is {{####}}.".format(service_name),
 					"EmailSubject": "Your {} temporary password".format(service_name)
 				}
 			},
@@ -310,6 +313,10 @@ class UserPool:
 			self.clients[client_name] = {}
 			return True
 		
+		allowed_oauth_scopes = [ "aws.cognito.signin.user.admin", "email", "openid" ]
+		if args.get('include_sms'):
+			allowed_oauth_scopes.append("phone")
+		
 		response = self.client.create_user_pool_client(
 			UserPoolId = self.id,
 			ClientName = client_name,
@@ -327,7 +334,7 @@ class UserPool:
 			CallbackURLs = args.get('callback_urls'),
 			LogoutURLs = args.get('logout_urls'),
 			AllowedOAuthFlows = [ "code" ],
-			AllowedOAuthScopes=[ "aws.cognito.signin.user.admin", "email", "openid", "phone" ],
+			AllowedOAuthScopes = allowed_oauth_scopes,
 			AllowedOAuthFlowsUserPoolClient = True,
 			PreventUserExistenceErrors = "ENABLED",
 			EnableTokenRevocation = True,

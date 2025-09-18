@@ -203,4 +203,11 @@ class API:
 	
 	def ddb_action(self, action):
 		table = moses_common.dynamodb.Table(action['table'], ui=self.ui, dry_run=self.dry_run)
-		
+		if action['method'] == 'GET':
+			pass
+		elif action['method'] == 'POST':
+			pass
+		elif action['method'] == 'PATCH':
+			pass
+		elif action['method'] == 'DELETE':
+			pass
